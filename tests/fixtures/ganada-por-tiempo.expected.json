@@ -1,0 +1,28 @@
+{
+  "chesscom_uuid": "8d302e81-8ff1-11ef-8e02-37abb301000f",
+  "my_color": "white",
+  "result": "win",
+  "score": 1.0,
+  "termination": "win",
+  "opp_username": "Fumoffu09",
+  "time_control": "600",
+  "base_seconds": 600,
+  "increment_secs": 0,
+  "is_correspondence": false,
+  "analysis_state": "pending",
+  "ply_count": 79,
+  "has_clk": true,
+  "n_clocks": 79,
+  "first_clock_ms": 600000,
+  "last_clock_ms": 9800,
+  "move_times_ms_first_6": [
+    0,
+    16400,
+    12800,
+    18800,
+    6600,
+    32300
+  ],
+  "max_move_time_ms": 75600,
+  "min_move_time_ms": 0
+}

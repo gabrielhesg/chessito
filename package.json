@@ -1,0 +1,60 @@
+{
+  "name": "chessito",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --coverage",
+    "test:watch": "vitest",
+    "db:push": "tsx --conditions=react-server scripts/db-push.ts",
+    "db:types": "tsx --conditions=react-server scripts/db-types.ts",
+    "openings:load": "tsx --conditions=react-server scripts/load-openings.ts",
+    "ingest": "tsx --conditions=react-server scripts/ingest.ts"
+  },
+  "dependencies": {
+    "@mliebelt/pgn-parser": "1.4.19",
+    "@supabase/ssr": "0.12.5",
+    "@supabase/supabase-js": "2.112.4",
+    "chess.js": "1.4.0",
+    "next": "16.3.3",
+    "pg": "8.23.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "server-only": "0.0.1",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/node": "26.4.0",
+    "@types/pg": "8.23.1",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.5",
+    "@vitest/coverage-v8": "4.1.11",
+    "dotenv": "17.4.2",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.3.3",
+    "postcss": "8.5.26",
+    "supabase": "2.116.0",
+    "tailwindcss": "4.3.3",
+    "tsx": "4.23.13",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.68.0",
+    "vitest": "4.1.11"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "unrs-resolver",
+      "supabase",
+      "sharp"
+    ]
+  }
+}

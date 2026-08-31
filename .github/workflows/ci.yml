@@ -1,0 +1,77 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - name: Tests con cobertura
+        run: pnpm test
+      - run: pnpm build
+
+  # La suite de integracion necesita un Postgres con el esquema real. Se levanta uno
+  # efimero en el runner: no toca ni dev ni produccion.
+  integracion:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Ingesta de punta a punta contra Postgres
+        env:
+          TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+        run: pnpm exec vitest run tests/ingest.integration.test.ts
+
+  # Los diez chequeos de v_data_quality contra la base de verdad. Corre solo si el
+  # repositorio tiene el secreto: sin el, se salta con un aviso en vez de ponerse rojo.
+  calidad-de-datos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Chequeos de v_data_quality
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::notice::Sin SUPABASE_DB_URL: se salta el chequeo de calidad de datos."
+            exit 0
+          fi
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+          echo "Chequeos que no dan cero:"
+          psql "$SUPABASE_DB_URL" -t -A -F'|' -c \
+            "select check_name, offenders, descripcion from v_data_quality where not ok"
+          fallando=$(psql "$SUPABASE_DB_URL" -t -A -c "select count(*) from v_data_quality where not ok")
+          if [ "$fallando" != "0" ]; then
+            echo "::error::$fallando chequeos de calidad de datos en rojo"
+            exit 1
+          fi
+          echo "Los diez chequeos en verde."

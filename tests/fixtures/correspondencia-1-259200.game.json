@@ -1,0 +1,28 @@
+{
+  "url": "https://www.chess.com/game/daily/763684207",
+  "time_control": "1/259200",
+  "end_time": 1738610207,
+  "rated": true,
+  "tcn": "lBZJbs!Tgv",
+  "uuid": "ae5245c8-dba1-11ef-8d60-1df7d801000b",
+  "initial_setup": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+  "fen": "rnbqkb1r/ppp1pppp/5n2/3p4/3P4/2N2N2/PPP1PPPP/R1BQKB1R b KQkq - 3 3",
+  "start_time": 1737867293,
+  "time_class": "daily",
+  "rules": "chess",
+  "white": {
+    "rating": 546,
+    "result": "win",
+    "@id": "https://api.chess.com/pub/player/cheems-vidhayak",
+    "username": "Cheems-Vidhayak",
+    "uuid": "21868bde-9a5a-11ed-be38-5b2950b1e283"
+  },
+  "black": {
+    "rating": 400,
+    "result": "timeout",
+    "@id": "https://api.chess.com/pub/player/gabrielhesg",
+    "username": "GabrielHesg",
+    "uuid": "9c39b1c4-6fc1-11ef-b9c2-35ba6b9254a4"
+  },
+  "eco": "https://www.chess.com/openings/Queens-Pawn-Opening-Chigorin-Variation-2...Nf6-3.Nf3"
+}

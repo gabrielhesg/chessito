@@ -1,0 +1,40 @@
+name: ingest
+
+# El camino principal de la ingesta. Cada 3 horas, que es lo que GitHub Actions permite y
+# Vercel no (su plan gratuito da un solo cron al dia). El cron de Vercel queda como piso
+# garantizado porque Actions desactiva los workflows programados tras 60 dias sin actividad.
+on:
+  schedule:
+    - cron: '17 */3 * * *'
+  workflow_dispatch:
+    inputs:
+      alcance:
+        description: 'recent (mes actual y anterior) o full (todo el historico)'
+        required: false
+        default: recent
+        type: choice
+        options: [recent, full]
+
+jobs:
+  ingerir:
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'development' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Ingesta
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          CHESSCOM_USERNAME: ${{ secrets.CHESSCOM_USERNAME }}
+          OWNER_EMAIL: ${{ secrets.OWNER_EMAIL }}
+          CRON_SECRET: no-aplica-en-actions
+          APP_ENV: ${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
+        run: pnpm ingest ${{ (inputs.alcance == 'full') && '--full' || '' }}

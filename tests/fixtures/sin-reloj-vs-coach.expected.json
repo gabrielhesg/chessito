@@ -1,0 +1,21 @@
+{
+  "chesscom_uuid": "6857b5ea-5aee-11f0-9e6f-9159da66badd",
+  "my_color": "white",
+  "result": "win",
+  "score": 1.0,
+  "termination": "win",
+  "opp_username": "Coach-Dante",
+  "time_control": "-",
+  "base_seconds": 0,
+  "increment_secs": 0,
+  "is_correspondence": true,
+  "analysis_state": "skipped",
+  "ply_count": 75,
+  "has_clk": false,
+  "n_clocks": 0,
+  "first_clock_ms": null,
+  "last_clock_ms": null,
+  "move_times_ms_first_6": [],
+  "max_move_time_ms": null,
+  "min_move_time_ms": null
+}

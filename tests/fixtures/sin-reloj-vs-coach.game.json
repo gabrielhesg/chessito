@@ -1,0 +1,27 @@
+{
+  "url": "https://www.chess.com/game/daily/1914908",
+  "time_control": "-",
+  "end_time": 1751864044,
+  "rated": false,
+  "tcn": "mC0Kgv9Rks!0lB5QBJQ5ftRIjzIRegWOsAOGzHGybsyqcu8!AI0UIRYRsy4ydy98yq5QqR7GulG7JQZQR787tA7lvl6EnvEZHQZQAJQJCJU9acXPc6PHJR1LRZ!1Z~9S781T8HTMHK3NKS2US0MDow",
+  "uuid": "6857b5ea-5aee-11f0-9e6f-9159da66badd",
+  "initial_setup": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+  "fen": "2R5/4Q3/6p1/5p1p/5k2/5PP1/P2N3P/5RK1 b - - 0 38",
+  "start_time": 1751863445,
+  "time_class": "daily",
+  "rules": "chess",
+  "white": {
+    "rating": 879,
+    "result": "win",
+    "@id": "https://api.chess.com/pub/player/gabrielhesg",
+    "username": "GabrielHesg",
+    "uuid": "9c39b1c4-6fc1-11ef-b9c2-35ba6b9254a4"
+  },
+  "black": {
+    "rating": 1000,
+    "result": "checkmated",
+    "@id": "https://api.chess.com/pub/player/coach-dante",
+    "username": "Coach-Dante",
+    "uuid": "ba81fb70-fb79-11ef-a9bd-2fa940ee3d4f"
+  }
+}

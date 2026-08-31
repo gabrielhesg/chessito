@@ -1,0 +1,27 @@
+{
+  "url": "https://www.chess.com/game/live/136026507814",
+  "time_control": "300",
+  "end_time": 1741407293,
+  "rated": true,
+  "tcn": "gv5QmC0Kks9IlBKBsBIBvBQBdB!Tbs8!fA70nvYQegZRcMQIBtWOiq3VMD6SAS0SjrSrfbrSbX47sHOHtHRJCJTJad2MHI98DYJYd7Se",
+  "uuid": "20f80138-fbd3-11ef-ba3e-a318ff01000f",
+  "initial_setup": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+  "fen": "3Rr1k1/1Rn2p2/7p/2Q3p1/8/P4P2/6PP/4q1K1 w - -",
+  "time_class": "blitz",
+  "rules": "chess",
+  "white": {
+    "rating": 373,
+    "result": "checkmated",
+    "@id": "https://api.chess.com/pub/player/gabrielhesg",
+    "username": "GabrielHesg",
+    "uuid": "9c39b1c4-6fc1-11ef-b9c2-35ba6b9254a4"
+  },
+  "black": {
+    "rating": 461,
+    "result": "win",
+    "@id": "https://api.chess.com/pub/player/swavey2x",
+    "username": "Swavey2x",
+    "uuid": "8d6059da-a968-11ed-a2c2-6170c822a980"
+  },
+  "eco": "https://www.chess.com/openings/Ponziani-Opening"
+}

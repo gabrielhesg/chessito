@@ -1,0 +1,28 @@
+{
+  "chesscom_uuid": "6683248a-ebf9-11f0-8af9-54b7ba01000f",
+  "my_color": "black",
+  "result": "win",
+  "score": 1.0,
+  "termination": "win",
+  "opp_username": "Mm159753",
+  "time_control": "900+10",
+  "base_seconds": 900,
+  "increment_secs": 10,
+  "is_correspondence": false,
+  "analysis_state": "pending",
+  "ply_count": 88,
+  "has_clk": true,
+  "n_clocks": 88,
+  "first_clock_ms": 909700,
+  "last_clock_ms": 942200,
+  "move_times_ms_first_6": [
+    300,
+    1200,
+    5100,
+    2600,
+    1300,
+    1300
+  ],
+  "max_move_time_ms": 259800,
+  "min_move_time_ms": 300
+}
