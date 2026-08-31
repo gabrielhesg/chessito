@@ -1,0 +1,27 @@
+{
+  "chesscom_uuid": "ae5245c8-dba1-11ef-8d60-1df7d801000b",
+  "my_color": "black",
+  "result": "loss",
+  "score": 0.0,
+  "termination": "timeout",
+  "opp_username": "Cheems-Vidhayak",
+  "time_control": "1/259200",
+  "base_seconds": 259200,
+  "increment_secs": 0,
+  "is_correspondence": true,
+  "analysis_state": "skipped",
+  "ply_count": 5,
+  "has_clk": true,
+  "n_clocks": 5,
+  "first_clock_ms": 16655400,
+  "last_clock_ms": 19183000,
+  "move_times_ms_first_6": [
+    242544600,
+    252301300,
+    15206500,
+    2752500,
+    0
+  ],
+  "max_move_time_ms": 252301300,
+  "min_move_time_ms": 0
+}

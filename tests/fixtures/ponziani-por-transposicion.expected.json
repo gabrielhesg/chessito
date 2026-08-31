@@ -1,0 +1,30 @@
+{
+  "chesscom_uuid": "20f80138-fbd3-11ef-ba3e-a318ff01000f",
+  "my_color": "white",
+  "result": "loss",
+  "score": 0.0,
+  "termination": "checkmated",
+  "opp_username": "Swavey2x",
+  "time_control": "300",
+  "base_seconds": 300,
+  "increment_secs": 0,
+  "is_correspondence": false,
+  "analysis_state": "pending",
+  "ply_count": 52,
+  "has_clk": true,
+  "n_clocks": 52,
+  "first_clock_ms": 299300,
+  "last_clock_ms": 163500,
+  "move_times_ms_first_6": [
+    700,
+    1600,
+    3800,
+    5400,
+    2500,
+    1200
+  ],
+  "max_move_time_ms": 23300,
+  "min_move_time_ms": 100,
+  "primeras_jugadas": "Nf3 Nc6 e4 e5 c3 Bc5",
+  "apertura_esperada": "Ponziani Opening"
+}

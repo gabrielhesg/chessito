@@ -1,0 +1,82 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - name: Tests con cobertura
+        run: pnpm test
+      - run: pnpm build
+
+  # La suite de integracion necesita un Postgres con el esquema real. Se levanta uno
+  # efimero en el runner: no toca ni dev ni produccion.
+  integracion:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Esta suite es la que hace cumplir "la CI falla si algun chequeo de v_data_quality da
+      # false": levanta el esquema real, ingiere los fixtures y exige los diez en verde.
+      # Corre siempre, sin depender de ningun secreto.
+      - name: Ingesta y chequeos de calidad contra Postgres
+        env:
+          TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+        run: pnpm exec vitest run tests/ingest.integration.test.ts tests/sql-functions.integration.test.ts
+
+  # Los mismos diez chequeos, pero contra la base de VERDAD. El job de integracion ya los
+  # verifica siempre sobre un Postgres efimero; este agrega el estado real de los datos de
+  # Gabriel y solo puede correr donde exista el secreto (nunca en un fork). Sin el secreto
+  # avisa con un warning visible: "verde" y "no se pudo verificar" no se confunden.
+  calidad-de-datos-en-vivo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Chequeos de v_data_quality
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::warning::Sin el secreto SUPABASE_DB_URL no se pudo verificar la calidad de los datos reales. Los diez chequeos si se verificaron contra un Postgres efimero en el job de integracion."
+            exit 0
+          fi
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+          echo "Chequeos que no dan cero:"
+          psql "$SUPABASE_DB_URL" -t -A -F'|' -c \
+            "select check_name, offenders, descripcion from v_data_quality where not ok"
+          fallando=$(psql "$SUPABASE_DB_URL" -t -A -c "select count(*) from v_data_quality where not ok")
+          if [ "$fallando" != "0" ]; then
+            echo "::error::$fallando chequeos de calidad de datos en rojo"
+            exit 1
+          fi
+          echo "Los diez chequeos en verde."

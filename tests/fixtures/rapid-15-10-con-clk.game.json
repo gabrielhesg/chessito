@@ -1,0 +1,31 @@
+{
+  "url": "https://www.chess.com/game/live/147715954288",
+  "time_control": "900+10",
+  "end_time": 1767813213,
+  "rated": true,
+  "accuracies": {
+    "white": 79.61,
+    "black": 89.72
+  },
+  "tcn": "mC0Klt5Qks!Tcu90blZRlA6SAqWOpxXHjz7Zgm8!mwRJfmJBsB0zulzqmEQBELBLCLSLwLZLluqzulzldlYIeg47lu7JiyHzac96feTZcALtAEtueuJdgpZTEMKCuw2UxFdJpxJMFMTJxEIAnDCuDLumLUm~U3!?wxAsENJDNVDxoxeF",
+  "uuid": "6683248a-ebf9-11f0-8af9-54b7ba01000f",
+  "initial_setup": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+  "fen": "2r4k/5p1P/p6K/6P1/Pp5q/2p4P/8/8 w - - 1 45",
+  "time_class": "rapid",
+  "rules": "chess",
+  "white": {
+    "rating": 1151,
+    "result": "checkmated",
+    "@id": "https://api.chess.com/pub/player/mm159753",
+    "username": "Mm159753",
+    "uuid": "06bed66a-716e-11f0-8a4c-7f113ff07ed5"
+  },
+  "black": {
+    "rating": 1280,
+    "result": "win",
+    "@id": "https://api.chess.com/pub/player/gabrielhesg",
+    "username": "GabrielHesg",
+    "uuid": "9c39b1c4-6fc1-11ef-b9c2-35ba6b9254a4"
+  },
+  "eco": "https://www.chess.com/openings/Kings-Pawn-Opening-Leonardis-Variation"
+}

@@ -1,0 +1,30 @@
+{
+  "chesscom_uuid": "ff8b4f2b-9b30-11ef-ac55-39ed9901000f",
+  "my_color": "black",
+  "result": "loss",
+  "score": 0.0,
+  "termination": "checkmated",
+  "opp_username": "hesam-ab-10",
+  "time_control": "600",
+  "base_seconds": 600,
+  "increment_secs": 0,
+  "is_correspondence": false,
+  "analysis_state": "pending",
+  "ply_count": 27,
+  "has_clk": true,
+  "n_clocks": 27,
+  "first_clock_ms": 599300,
+  "last_clock_ms": 518400,
+  "move_times_ms_first_6": [
+    700,
+    1000,
+    2500,
+    17700,
+    3900,
+    14100
+  ],
+  "max_move_time_ms": 33200,
+  "min_move_time_ms": 700,
+  "my_accuracy_chesscom": 14.97,
+  "nota": "Fixture del paso 2 del signo (docs/CONFIANZA.md capa 1). La clasificacion de las jugadas la llena la Fase 3; por ahora congela el parseo, el color, el resultado y los tiempos."
+}

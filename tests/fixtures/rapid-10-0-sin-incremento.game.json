@@ -1,0 +1,27 @@
+{
+  "url": "https://www.chess.com/game/live/120163662696",
+  "time_control": "600",
+  "end_time": 1729277039,
+  "rated": true,
+  "tcn": "mCZJCJ7JbsJKdm1TgvKSmS6SvBSLBL5ZfHYQlBQHsHWOHY81Y4ZP",
+  "uuid": "7b7bb60b-8d80-11ef-8e02-37abb301000f",
+  "initial_setup": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+  "fen": "N4bnr/1p2pkpp/pn3p2/5N2/3P4/8/PPP2PPP/R1B1K2R w KQ -",
+  "time_class": "rapid",
+  "rules": "chess",
+  "white": {
+    "rating": 147,
+    "result": "win",
+    "@id": "https://api.chess.com/pub/player/gabrielhesg",
+    "username": "GabrielHesg",
+    "uuid": "9c39b1c4-6fc1-11ef-b9c2-35ba6b9254a4"
+  },
+  "black": {
+    "rating": 100,
+    "result": "resigned",
+    "@id": "https://api.chess.com/pub/player/neel01810",
+    "username": "Neel01810",
+    "uuid": "214ec066-8d7c-11ef-ba1f-0ba75ec2e112"
+  },
+  "eco": "https://www.chess.com/openings/Scandinavian-Defense-Mieses-Kotrc-Variation-3.Nc3-Qe5"
+}

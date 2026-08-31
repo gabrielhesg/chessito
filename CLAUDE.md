@@ -33,6 +33,7 @@ Cuatro documentos son **criterio de aceptación, no sugerencias**:
 | `docs/CONFIANZA.md` | Cómo se verifica que el análisis es correcto |
 | `docs/ANALYSIS-SPEC.md` | El motor, las fórmulas y los umbrales |
 | `docs/DECISIONES-DE-STACK.md` | Por qué cada pieza, y cuál es el camino de salida |
+| `docs/DESPLIEGUE.md` | Los pasos manuales: Supabase, Vercel y GitHub, pantalla por pantalla |
 
 En resumen: TypeScript strict sin
 `any`, tipos de base de datos generados, validación con Zod en el borde, tests con Vitest sobre
@@ -163,8 +164,82 @@ reproduce SAN jugada a jugada. El try/catch va alrededor del bucle de `chess.mov
 
 `rules = 'chess'` no basta como filtro. Las partidas por correspondencia también son
 `rules: 'chess'`, tienen `time_control` con formato `1/86400` (que revienta el parser de
-`900+10`) y no traen `%clk`. Se ingieren, pero se marcan `analysis_state = 'skipped'` y quedan
-fuera del análisis de reloj y de motor.
+`900+10`). Se ingieren, pero se marcan `analysis_state = 'skipped'` y quedan fuera del análisis
+de reloj y de motor.
+
+**Corrección medida en el histórico real (Fase 1).** Dos cosas del párrafo anterior no eran
+exactas y el código sigue lo medido, no lo escrito:
+
+- La correspondencia **sí trae `%clk`**. Las que no lo traen son las partidas *Play vs Coach*,
+  que además llegan con `time_control = '-'` (`parseTimeControl` lo trata como correspondencia y
+  las marca `skipped`). En 9.650 partidas hay 4 partidas `daily`: una de correspondencia real y
+  tres contra el coach.
+- El resto del histórico es 100% `rules: 'chess'`. Todavía no hay una sola variante, así que el
+  camino de variantes está escrito pero nunca se ejerció con datos de verdad.
+
+## Estado al terminar la Fase 1
+
+La app está construida y verificada de punta a punta contra el histórico real (9.650 partidas,
+23 meses, desde 2024-10). Lo que existe hoy:
+
+| Pieza | Dónde |
+|---|---|
+| Lógica de ajedrez, pura y testeada | `lib/chess/` (slug, openings, pgn, clock, timecontrol, chesscom, game) |
+| La única función de ingesta | `lib/ingest/run.ts` |
+| Acceso a datos | `lib/ingest/store.ts` (interfaz) con dos transportes: `supabase-store.ts` y `pg-store.ts` |
+| Lecturas de la app | `lib/data.ts`, todas con los tipos generados |
+| Páginas | `/`, `/aperturas`, `/ritmo`, `/registro`, `/salud`, `/entrar` |
+| Migraciones nuevas | `0003_session_features.sql` y `0004_portada_y_reconciliacion.sql` |
+
+**Dos transportes, una sola lógica.** `SupabaseIngestStore` (PostgREST + service role) es el que
+corre en Vercel; `PgIngestStore` (conexión directa por `SUPABASE_DB_URL`) es el de los scripts y
+GitHub Actions, porque mueve miles de filas y cuesta una fracción. Los dos hablan con el mismo
+esquema y llaman a la misma función SQL `recompute_session_features()`. Si agregas una operación
+de datos, va en la interfaz y en las dos implementaciones, nunca en una sola.
+
+**`lib/env.ts` valida perezosamente, no al importar.** Si validara al importar, `next build` se
+caería en CI, donde no hay secretos. Los scripts batch llaman a `assertEnv()` en su primera línea
+y conservan el "falla al arrancar con el nombre de la variable que falta".
+
+**Los scripts corren con `--conditions=react-server`.** Es lo que hace que `import 'server-only'`
+no explote fuera de Next. Está en los scripts de `package.json`; si agregas uno nuevo, cópialo.
+
+**La reconciliación compara UUID a UUID, no conteos mensuales.** El plan original de
+`docs/CONFIANZA.md` (comparar contra `v_games_by_month`) no puede funcionar: los archivos
+mensuales de chess.com están cortados por el **inicio** de la partida y `games.end_time` es el
+final, así que cualquier vista agrupada por mes descuadra en cada frontera. Medido en el
+histórico completo: doce meses con diferencias que se cancelan de a pares (-8/+8, -15/+15). La
+ingesta pide los uuid de cada archivo y verifica cuáles quedaron guardados; así no solo sabe que
+falta una partida, sabe cuál, y lo deja en `job_runs.detail`. El razonamiento está escrito en la
+migración 0003.
+
+**Los ids de `openings` llevan sufijo cuando hace falta.** `eco + '_' + slug(name)` no es único
+en los TSV de Lichess: 253 pares (eco, nombre) aparecen en varias líneas con EPD distinto. La
+línea más corta se queda el id limpio y las demás llevan seis hex del EPD
+(`assignOpeningIds` en `lib/chess/openings.ts`). Sin eso se perdían 253 EPD y con ellos parte de
+la resolución por transposición.
+
+**Las vistas que agregó la Fase 1.** `v_monthly_summary` (el mes en curso ya agregado, para que
+la portada no sume filas en TypeScript), `v_monthly_activity_wilson` (lo mismo que
+`v_monthly_activity` pero con `n` y `wilson_lower`, porque la original expone el porcentaje
+pelado y la regla es usar Wilson) y `v_opening_resolution` (cuántas partidas quedan sin resolver
+por EPD, que es el numerador del chequeo `aperturas_sin_resolver`). Las originales de 0001 y 0002
+quedan intactas: nunca se edita una migración aplicada.
+
+**Lo que la Fase 2 necesita saber.** `lib/chess/clock.ts` ya existe, está testeado contra
+fixtures reales y resuelve la trampa 1 completa (incremento, ply n-2, plies 1 y 2 contra
+`base_seconds`, clampeo del truncamiento a decisegundos). `parsePgn` ya devuelve `ply`, `san`,
+`uci`, `clockMs` y el EPD de cada posición. Escribir `moves` es recorrer eso y calcular `phase` e
+`is_book` (el `plyCount` del match de apertura ya sale de `resolveOpening`).
+
+**Medido en la Fase 1, para no volver a medirlo:** el histórico completo son ~9.650 partidas;
+`pnpm ingest --full` demora ~2 minutos; `pnpm openings:load` carga 3.810 filas; la resolución de
+apertura por EPD deja 0,01% sin resolver; las consultas de todas las páginas van entre 4 y 35 ms
+con el histórico cargado.
+
+**Lo que NO está hecho y no es un olvido:** `/errores` y `/reloj` son de las fases 2 y 3;
+`moves` está vacía; ninguna partida tiene `analysis_state = 'done'`, así que las columnas de
+motor de `/aperturas` salen vacías a propósito y `v_analysis_coverage` reporta 0 analizadas.
 
 ## Convenciones
 
@@ -197,9 +272,10 @@ Cada uno se agrega a `package.json` en el fase que lo crea.
 | Comando | Archivo | Milestone |
 |---|---|---|
 | `pnpm dev` | Next.js | Fase 1 |
-| `pnpm db:push` | aplica migraciones. Acepta `--env dev` y `--env prod`. Primero dev, siempre | Fase 1 |
-| `pnpm openings:load` | `scripts/load-openings.ts`, carga los TSV de Lichess | Fase 1 |
-| `pnpm ingest` | `scripts/ingest.ts`, mismo código que la ruta de cron, para correr a mano | Fase 1 |
+| `pnpm db:push` | `scripts/db-push.ts`, aplica migraciones en orden y lleva la cuenta en `schema_migrations`. Acepta `--env dev`, `--env prod` y `--db-url`. Primero dev, siempre | Fase 1 |
+| `pnpm db:types` | `scripts/db-types.ts`. Con `--env` usa el CLI oficial de Supabase; con `--db-url` introspecciona cualquier Postgres (el CLI necesita Docker y no siempre hay) | Fase 1 |
+| `pnpm openings:load` | `scripts/load-openings.ts`, carga los TSV de Lichess. Acepta `--from-dir` donde la red bloquea raw.githubusercontent.com | Fase 1 |
+| `pnpm ingest` | `scripts/ingest.ts`, mismo `runIngest` que la ruta de cron. `--full` para todo el histórico | Fase 1 |
 | `pnpm moves:extract` | `scripts/extract-moves.ts`, puebla `moves` desde el PGN | Fase 2 |
 | `pnpm analyze` | `scripts/analyze.ts`, el analizador con Stockfish nativo. Lo corre GitHub Actions, y también sirve en local | Fase 3 |
 | `pnpm puzzles:build` | `scripts/build-puzzles.ts`, genera ejercicios | Fase 4 |

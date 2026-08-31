@@ -1,0 +1,31 @@
+{
+  "url": "https://www.chess.com/game/live/120701110160",
+  "time_control": "600",
+  "end_time": 1730782286,
+  "rated": true,
+  "accuracies": {
+    "white": 52.98,
+    "black": 14.97
+  },
+  "tcn": "mC0KfAZJAJ!TgvTCJC6EvKEded70nD2MDM0KCX5ZX4ZP4Q87heKMe8",
+  "uuid": "ff8b4f2b-9b30-11ef-ac55-39ed9901000f",
+  "initial_setup": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+  "fen": "3kRb1r/p1p2p1p/1nB5/6q1/8/8/PPPP2PP/RNBK4 b - -",
+  "time_class": "rapid",
+  "rules": "chess",
+  "white": {
+    "rating": 247,
+    "result": "win",
+    "@id": "https://api.chess.com/pub/player/hesam-ab-10",
+    "username": "hesam-ab-10",
+    "uuid": "c7f18a4e-5257-11ef-a576-d36489c69653"
+  },
+  "black": {
+    "rating": 224,
+    "result": "checkmated",
+    "@id": "https://api.chess.com/pub/player/gabrielhesg",
+    "username": "GabrielHesg",
+    "uuid": "9c39b1c4-6fc1-11ef-b9c2-35ba6b9254a4"
+  },
+  "eco": "https://www.chess.com/openings/Bishops-Opening"
+}

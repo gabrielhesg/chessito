@@ -1,0 +1,27 @@
+{
+  "url": "https://www.chess.com/game/live/120224091534",
+  "time_control": "600",
+  "end_time": 1729546517,
+  "rated": true,
+  "tcn": "mCXPfA6Xdv!TlB0Sbs3VBJYIJSZSvD9RCK5QKR75AHWOsy8ZyPZ7cuQzgvzkedkaDATCuICRIR5RdmRPhaPHacXJAHOHvK?9Kv4icIijmd1Low2MpxMEdcEvcj9!IJSJxFLDjrDwnw!wFNvnrjn~jkwsksfAsl",
+  "uuid": "8d302e81-8ff1-11ef-8e02-37abb301000f",
+  "initial_setup": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+  "fen": "3k4/8/7p/1p1p3P/2q5/8/3K4/8 b - -",
+  "time_class": "rapid",
+  "rules": "chess",
+  "white": {
+    "rating": 155,
+    "result": "win",
+    "@id": "https://api.chess.com/pub/player/gabrielhesg",
+    "username": "GabrielHesg",
+    "uuid": "9c39b1c4-6fc1-11ef-b9c2-35ba6b9254a4"
+  },
+  "black": {
+    "rating": 112,
+    "result": "timeout",
+    "@id": "https://api.chess.com/pub/player/fumoffu09",
+    "username": "Fumoffu09",
+    "uuid": "f966ade4-8ee2-11ef-88df-bf14f310dbc7"
+  },
+  "eco": "https://www.chess.com/openings/Owens-Defense"
+}
