@@ -1,0 +1,31 @@
+{
+  "url": "https://www.chess.com/game/live/120694971104",
+  "time_control": "600",
+  "end_time": 1730751147,
+  "rated": true,
+  "accuracies": {
+    "white": 25.32,
+    "black": 39.99
+  },
+  "tcn": "mC2MlB!Tbs?!gvMEvKEwfHTEhfEpfhpEnwEKBKYQHy!wsmwomDoEdE7GclGyjryCedChle3NDNZRKR6E",
+  "uuid": "907bcc9f-9ae7-11ef-86a0-4cb4d801000f",
+  "initial_setup": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+  "fen": "rn2kb2/pp2pp2/2pP4/7N/6b1/1P6/P1P5/R2KB2q w q -",
+  "time_class": "rapid",
+  "rules": "chess",
+  "white": {
+    "rating": 224,
+    "result": "resigned",
+    "@id": "https://api.chess.com/pub/player/gabrielhesg",
+    "username": "GabrielHesg",
+    "uuid": "9c39b1c4-6fc1-11ef-b9c2-35ba6b9254a4"
+  },
+  "black": {
+    "rating": 247,
+    "result": "win",
+    "@id": "https://api.chess.com/pub/player/prince_55664",
+    "username": "Prince_55664",
+    "uuid": "1e49184c-5be7-11ef-b29a-07662d746cfd"
+  },
+  "eco": "https://www.chess.com/openings/Kings-Pawn-Opening"
+}

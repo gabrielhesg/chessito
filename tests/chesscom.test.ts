@@ -98,7 +98,8 @@ describe('ChesscomClient', () => {
     });
     await expect(client.listArchives()).rejects.toBeInstanceOf(ChesscomError);
     expect(calls).toHaveLength(3);
-    expect(waits).toEqual([500, 1000, 2000]);
+    // Tres intentos, dos esperas: despues del ultimo no queda nada que esperar.
+    expect(waits).toEqual([500, 1000]);
   });
 
   it('no reintenta un 404', async () => {

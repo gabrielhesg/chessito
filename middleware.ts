@@ -63,9 +63,11 @@ export const config = {
     /*
      * Todo menos:
      *  - /api/ingest       la llama el cron con un bearer, NUNCA con sesion
-     *  - /api/auth/*       el intercambio del codigo OTP
      *  - estaticos de Next y el favicon
+     *
+     * Cualquier otra ruta nueva nace DENTRO del gate. El flujo OTP se resuelve con server
+     * actions en /entrar, que el propio middleware deja pasar sin sesion.
      */
-    '/((?!api/ingest|api/auth|_next/static|_next/image|favicon.ico).*)',
+    '/((?!api/ingest|_next/static|_next/image|favicon.ico).*)',
   ],
 };

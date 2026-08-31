@@ -98,7 +98,11 @@ export class ChesscomClient {
       if (response.status === 429) {
         const retryAfter = Number.parseInt(response.headers.get('retry-after') ?? '', 10);
         lastError = new ChesscomError(`429 Too Many Requests en ${url}`, 429);
-        await this.sleep(Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : backoffMs(attempt));
+        if (attempt < MAX_ATTEMPTS) {
+          await this.sleep(
+            Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : backoffMs(attempt),
+          );
+        }
         continue;
       }
 
@@ -119,7 +123,9 @@ export class ChesscomClient {
     throw lastError ?? new ChesscomError(`No se pudo obtener ${url}`);
   }
 
+  /** No duerme despues del ultimo intento: ahi ya no queda nada que esperar. */
   private async backoff(attempt: number): Promise<void> {
+    if (attempt >= MAX_ATTEMPTS) return;
     await this.sleep(backoffMs(attempt));
   }
 
@@ -148,7 +154,7 @@ export function backoffMs(attempt: number): number {
   return 500 * 2 ** (attempt - 1);
 }
 
-/** `{ year, month }` a la clave `YYYY-MM` con la que se compara contra `v_games_by_month_utc`. */
+/** `{ year, month }` a la clave `YYYY-MM` con la que se agrupa la reconciliacion. */
 export function monthKey({ year, month }: ArchiveMonth): string {
   return `${year}-${String(month).padStart(2, '0')}`;
 }

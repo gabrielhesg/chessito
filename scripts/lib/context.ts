@@ -23,6 +23,8 @@ export type BatchContext = {
 
 export function batchContext(): BatchContext {
   const env = assertEnv();
+  // `GITHUB_ACTIONS` la inyecta el runner y sirve solo para etiquetar `job_runs.trigger`.
+  // No es configuracion: si falta, la corrida simplemente queda como 'manual'.
   const trigger = process.env['GITHUB_ACTIONS'] === 'true' ? 'workflow_dispatch' : 'manual';
   const store: IngestStore = env.SUPABASE_DB_URL
     ? new PgIngestStore(env.SUPABASE_DB_URL)

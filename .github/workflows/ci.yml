@@ -46,14 +46,19 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Ingesta de punta a punta contra Postgres
+      # Esta suite es la que hace cumplir "la CI falla si algun chequeo de v_data_quality da
+      # false": levanta el esquema real, ingiere los fixtures y exige los diez en verde.
+      # Corre siempre, sin depender de ningun secreto.
+      - name: Ingesta y chequeos de calidad contra Postgres
         env:
           TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
-        run: pnpm exec vitest run tests/ingest.integration.test.ts
+        run: pnpm exec vitest run tests/ingest.integration.test.ts tests/sql-functions.integration.test.ts
 
-  # Los diez chequeos de v_data_quality contra la base de verdad. Corre solo si el
-  # repositorio tiene el secreto: sin el, se salta con un aviso en vez de ponerse rojo.
-  calidad-de-datos:
+  # Los mismos diez chequeos, pero contra la base de VERDAD. El job de integracion ya los
+  # verifica siempre sobre un Postgres efimero; este agrega el estado real de los datos de
+  # Gabriel y solo puede correr donde exista el secreto (nunca en un fork). Sin el secreto
+  # avisa con un warning visible: "verde" y "no se pudo verificar" no se confunden.
+  calidad-de-datos-en-vivo:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -62,7 +67,7 @@ jobs:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           if [ -z "$SUPABASE_DB_URL" ]; then
-            echo "::notice::Sin SUPABASE_DB_URL: se salta el chequeo de calidad de datos."
+            echo "::warning::Sin el secreto SUPABASE_DB_URL no se pudo verificar la calidad de los datos reales. Los diez chequeos si se verificaron contra un Postgres efimero en el job de integracion."
             exit 0
           fi
           sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client

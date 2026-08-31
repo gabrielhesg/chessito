@@ -1,6 +1,7 @@
 import 'server-only';
 import type { AdminClient } from '@/lib/supabase/admin';
 import type { GameRow } from '@/lib/chess/game';
+import type { Json } from '@/lib/database.types';
 import type { IngestStore, JobRunInput, JobRunResult, OpeningIndexEntry, OpeningInsert } from './store';
 
 /** Implementacion sobre PostgREST con la service role key. Es la que corre en Vercel. */
@@ -105,7 +106,9 @@ export class SupabaseIngestStore implements IngestStore {
         skipped: result.skipped,
         remaining: result.remaining,
         error: result.error,
-        detail: result.detail as never,
+        // `detail` es jsonb: se serializa y se vuelve a parsear para que lo que se escriba sea
+        // JSON valido de verdad, y no una asercion de tipos que apaga la verificacion.
+        detail: JSON.parse(JSON.stringify(result.detail ?? null)) as Json,
       })
       .eq('id', id);
     if (error) throw new Error(`No se pudo cerrar job_runs ${id}: ${error.message}`);

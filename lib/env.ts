@@ -77,15 +77,27 @@ export function assertEnv(): Env {
 }
 
 /**
- * Ambiente en el que corre este proceso. En Vercel se deriva de `VERCEL_ENV`
- * (production -> prod, preview y development -> dev, que es la base `chessito-dev`).
- * Fuera de Vercel manda `APP_ENV`. Ver docs/ENVIRONMENTS.md.
+ * Ambiente en el que corre este proceso. Las variables que lee esta funcion (`VERCEL_ENV`,
+ * `APP_ENV`, `VERCEL_GIT_COMMIT_REF`) quedan fuera del esquema Zod a proposito: son opcionales
+ * y las inyecta la plataforma, no el operador. `APP_ENV` si se valida aca abajo.
+ *
+ * En Vercel se deriva de `VERCEL_ENV` (production -> prod; preview y development -> dev, que es
+ * la base `chessito-dev`). Fuera de Vercel manda `APP_ENV`. Ver docs/ENVIRONMENTS.md.
  */
 export function appEnv(): AppEnv {
   const vercel = process.env['VERCEL_ENV'];
   if (vercel === 'production') return 'prod';
   if (vercel === 'preview' || vercel === 'development') return 'dev';
-  return process.env['APP_ENV'] === 'prod' ? 'prod' : 'dev';
+
+  const declared = process.env['APP_ENV'];
+  if (declared === undefined || declared === '') return 'dev';
+  if (declared !== 'prod' && declared !== 'dev') {
+    // Un APP_ENV mal escrito degradaria a 'dev' en silencio y escribiria eso en
+    // job_runs.environment, que es justo el campo con el que despues se audita quien escribio
+    // que. Mejor caerse aca.
+    throw new Error(`APP_ENV invalido: "${declared}". Solo 'prod' o 'dev'.`);
+  }
+  return declared;
 }
 
 /** Etiqueta visible en la barra superior cuando NO es produccion. */

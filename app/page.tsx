@@ -4,8 +4,8 @@ import { appEnv, env } from '@/lib/env';
 import { runIngest } from '@/lib/ingest/run';
 import { SupabaseIngestStore } from '@/lib/ingest/supabase-store';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { healthSummary, monthlyActivity } from '@/lib/data';
-import { Panel, Tabla, Vacio, pct } from '@/components/ui';
+import { healthSummary, monthlyActivity, monthlySummary } from '@/lib/data';
+import { Muestra, Panel, Tabla, Vacio, filaAtenuada, pct } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,13 +17,22 @@ const META_MENSUAL = 30;
  * jugar ajedrez, asi que la portada tiene que empujar a jugar.
  */
 export default async function Portada() {
-  const [meses, salud] = await Promise.all([monthlyActivity(), healthSummary()]);
+  // El mes en curso viene ya agregado de `v_monthly_summary`: las agregaciones entre filas
+  // viven en SQL, no en TypeScript.
+  const mesActual = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Santiago',
+    year: 'numeric',
+    month: '2-digit',
+  }).format(new Date());
 
-  const ahora = new Date();
-  const mesActual = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}`;
-  const esteMes = meses.filter((m) => (m.month_local ?? '').startsWith(mesActual));
-  const rapidas = esteMes.find((m) => m.time_class === 'rapid')?.n_games ?? 0;
-  const totalMes = esteMes.reduce((sum, m) => sum + (m.n_games ?? 0), 0);
+  const [meses, salud, resumenMes] = await Promise.all([
+    monthlyActivity(),
+    healthSummary(),
+    monthlySummary(mesActual),
+  ]);
+
+  const rapidas = resumenMes?.n_rapid ?? 0;
+  const totalMes = resumenMes?.n_games ?? 0;
   const avance = Math.min(100, Math.round((rapidas / META_MENSUAL) * 100));
 
   // El boton "Actualizar ahora": llama al MISMO runIngest que el cron. Existe porque la app
@@ -102,20 +111,29 @@ export default async function Portada() {
         </Panel>
       ) : null}
 
-      <Panel title="Actividad por mes" subtitle="Ultimos meses, por control de tiempo">
+      <Panel title="Actividad por mes" subtitle="Ultimos meses, por control de tiempo. El rendimiento se ordena por la cota inferior de Wilson; bajo 20 partidas la fila sale atenuada.">
         {meses.length === 0 ? (
           <Vacio>Todavia no hay partidas. Aprieta &quot;Actualizar ahora&quot;.</Vacio>
         ) : (
-          <Tabla headers={['Mes', 'Tipo', 'Partidas', 'Rendimiento', 'Rating al cierre']}>
-            {meses.slice(0, 18).map((m) => (
-              <tr key={`${m.month_local}-${m.time_class}`} className="border-b border-[var(--color-borde)]/50">
-                <td className="py-1.5 pr-3 tabular-nums">{(m.month_local ?? '').slice(0, 7)}</td>
-                <td className="py-1.5 pr-3">{m.time_class}</td>
-                <td className="py-1.5 pr-3 tabular-nums">{m.n_games}</td>
-                <td className="py-1.5 pr-3 tabular-nums">{pct(m.score_pct)}</td>
-                <td className="py-1.5 pr-3 tabular-nums">{m.rating_at_month_end ?? '—'}</td>
-              </tr>
-            ))}
+          <Tabla headers={['Mes', 'Tipo', 'n', 'Rendimiento', 'Wilson', 'Rating al cierre']}>
+            {meses.slice(0, 18).map((m) => {
+              const n = m.n ?? 0;
+              return (
+                <tr
+                  key={`${m.month_local}-${m.time_class}`}
+                  className={`border-b border-[var(--color-borde)]/50 ${filaAtenuada(n)}`}
+                >
+                  <td className="py-1.5 pr-3 tabular-nums">{m.month_local}</td>
+                  <td className="py-1.5 pr-3">{m.time_class}</td>
+                  <td className="py-1.5 pr-3 tabular-nums">
+                    <Muestra n={n} />
+                  </td>
+                  <td className="py-1.5 pr-3 tabular-nums">{pct(m.score_pct)}</td>
+                  <td className="py-1.5 pr-3 tabular-nums">{pct(m.score_pct_lower)}</td>
+                  <td className="py-1.5 pr-3 tabular-nums">{m.rating_at_month_end ?? '—'}</td>
+                </tr>
+              );
+            })}
           </Tabla>
         )}
       </Panel>

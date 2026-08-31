@@ -211,15 +211,25 @@ export async function runIngest(options: IngestOptions): Promise<IngestSummary> 
     return summary;
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    await store.finishJobRun(jobRunId, {
-      status: 'failed',
-      processed,
-      failed: failedCount,
-      skipped,
-      remaining: null,
-      error: reason,
-      detail: { scope: scope.kind, months: months.map(monthKey), fallidas: failures.slice(0, 50) },
-    });
+    try {
+      await store.finishJobRun(jobRunId, {
+        status: 'failed',
+        processed,
+        failed: failedCount,
+        skipped,
+        remaining: null,
+        error: reason,
+        detail: { scope: scope.kind, months: months.map(monthKey), fallidas: failures.slice(0, 50) },
+      });
+    } catch (cierreFallido) {
+      // Si tambien falla el cierre, la fila queda en 'running' y la va a delatar `stuck_runs`
+      // en /salud. Lo que no puede pasar es que este error tape el original, que es el que
+      // explica por que se cayo la corrida.
+      log.error('No se pudo cerrar la corrida en job_runs', {
+        jobRunId,
+        motivo: cierreFallido instanceof Error ? cierreFallido.message : String(cierreFallido),
+      });
+    }
     throw error;
   }
 }

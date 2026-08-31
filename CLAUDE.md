@@ -189,7 +189,7 @@ La app está construida y verificada de punta a punta contra el histórico real 
 | Acceso a datos | `lib/ingest/store.ts` (interfaz) con dos transportes: `supabase-store.ts` y `pg-store.ts` |
 | Lecturas de la app | `lib/data.ts`, todas con los tipos generados |
 | Páginas | `/`, `/aperturas`, `/ritmo`, `/registro`, `/salud`, `/entrar` |
-| Migración nueva | `supabase/migrations/0003_session_features.sql` |
+| Migraciones nuevas | `0003_session_features.sql` y `0004_portada_y_reconciliacion.sql` |
 
 **Dos transportes, una sola lógica.** `SupabaseIngestStore` (PostgREST + service role) es el que
 corre en Vercel; `PgIngestStore` (conexión directa por `SUPABASE_DB_URL`) es el de los scripts y
@@ -218,6 +218,13 @@ en los TSV de Lichess: 253 pares (eco, nombre) aparecen en varias líneas con EP
 línea más corta se queda el id limpio y las demás llevan seis hex del EPD
 (`assignOpeningIds` en `lib/chess/openings.ts`). Sin eso se perdían 253 EPD y con ellos parte de
 la resolución por transposición.
+
+**Las vistas que agregó la Fase 1.** `v_monthly_summary` (el mes en curso ya agregado, para que
+la portada no sume filas en TypeScript), `v_monthly_activity_wilson` (lo mismo que
+`v_monthly_activity` pero con `n` y `wilson_lower`, porque la original expone el porcentaje
+pelado y la regla es usar Wilson) y `v_opening_resolution` (cuántas partidas quedan sin resolver
+por EPD, que es el numerador del chequeo `aperturas_sin_resolver`). Las originales de 0001 y 0002
+quedan intactas: nunca se edita una migración aplicada.
 
 **Lo que la Fase 2 necesita saber.** `lib/chess/clock.ts` ya existe, está testeado contra
 fixtures reales y resuelve la trampa 1 completa (incremento, ply n-2, plies 1 y 2 contra

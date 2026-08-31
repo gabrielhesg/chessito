@@ -26,6 +26,8 @@ export type Expected = {
   min_move_time_ms: number | null;
   primeras_jugadas?: string;
   apertura_esperada?: string;
+  my_accuracy_chesscom?: number;
+  nota?: string;
 };
 
 export type Fixture = {
@@ -42,6 +44,11 @@ export const FIXTURE_NAMES = [
   'sin-reloj-vs-coach',
   'ganada-por-tiempo',
   'ponziani-por-transposicion',
+  // Los dos fixtures del paso 2 del signo (docs/CONFIANZA.md capa 1): una derrota grave con
+  // cada color. Hoy congelan parseo, color, resultado y tiempos; la clasificacion de sus
+  // jugadas la agrega la Fase 3, cuando exista el motor.
+  'derrota-grave-con-blancas',
+  'derrota-grave-con-negras',
 ] as const;
 
 export function loadFixture(name: string): Fixture {

@@ -485,6 +485,30 @@ export type Database = {
         }
         Relationships: []
       }
+      v_monthly_activity_wilson: {
+        Row: {
+          month_local: string | null
+          time_class: string | null
+          n: number | null
+          score_pct: number | null
+          score_pct_lower: number | null
+          rating_at_month_end: number | null
+        }
+        Relationships: []
+      }
+      v_monthly_summary: {
+        Row: {
+          month_local: string | null
+          n_games: number | null
+          n_rapid: number | null
+          n_blitz: number | null
+          n_bullet: number | null
+          score_pct: number | null
+          score_pct_lower: number | null
+          rating_at_month_end: number | null
+        }
+        Relationships: []
+      }
       v_opening_performance: {
         Row: {
           opening_id: string | null
@@ -499,6 +523,14 @@ export type Database = {
           median_divergence_ply: number | null
           acpl: number | null
           n_analyzed: number | null
+        }
+        Relationships: []
+      }
+      v_opening_resolution: {
+        Row: {
+          n_games: number | null
+          n_unresolved: number | null
+          pct_unresolved: number | null
         }
         Relationships: []
       }

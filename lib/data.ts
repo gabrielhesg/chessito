@@ -7,7 +7,9 @@ import type { Database } from '@/lib/database.types';
  * bloque de datos y cero agregacion en TypeScript: eso vive en las vistas SQL.
  */
 type Views = Database['public']['Views'];
-export type MonthlyActivity = Views['v_monthly_activity']['Row'];
+export type MonthlyActivity = Views['v_monthly_activity_wilson']['Row'];
+export type MonthlySummary = Views['v_monthly_summary']['Row'];
+export type OpeningResolution = Views['v_opening_resolution']['Row'];
 export type OpeningPerformance = Views['v_opening_performance']['Row'];
 export type ByHour = Views['v_by_hour']['Row'];
 export type BySessionIndex = Views['v_by_session_index']['Row'];
@@ -26,12 +28,29 @@ function fail(view: string, message: string): never {
 
 export async function monthlyActivity(): Promise<MonthlyActivity[]> {
   const { data, error } = await supabaseAdmin()
-    .from('v_monthly_activity')
+    .from('v_monthly_activity_wilson')
     .select('*')
     .order('month_local', { ascending: false })
     .limit(24);
-  if (error) fail('v_monthly_activity', error.message);
+  if (error) fail('v_monthly_activity_wilson', error.message);
   return data ?? [];
+}
+
+/** El mes en curso ya agregado en SQL: TypeScript no suma filas, solo presenta. */
+export async function monthlySummary(month: string): Promise<MonthlySummary | null> {
+  const { data, error } = await supabaseAdmin()
+    .from('v_monthly_summary')
+    .select('*')
+    .eq('month_local', month)
+    .maybeSingle();
+  if (error) fail('v_monthly_summary', error.message);
+  return data;
+}
+
+export async function openingResolution(): Promise<OpeningResolution | null> {
+  const { data, error } = await supabaseAdmin().from('v_opening_resolution').select('*').maybeSingle();
+  if (error) fail('v_opening_resolution', error.message);
+  return data;
 }
 
 export async function openingPerformance(): Promise<OpeningPerformance[]> {
@@ -157,4 +176,58 @@ export async function openingNames(ids: string[]): Promise<Map<string, string>> 
   const { data, error } = await supabaseAdmin().from('openings').select('id, name').in('id', unique);
   if (error) fail('openings', error.message);
   return new Map((data ?? []).map((row) => [row.id, row.name]));
+}
+
+/**
+ * La reconciliacion de la ultima ingesta, sacada de `job_runs.detail`.
+ *
+ * Es la capa 4 de docs/CONFIANZA.md: /salud tiene que mostrar si falta alguna partida respecto
+ * de lo que chess.com dice que hay, y CUAL, no solo que la corrida salio mal.
+ */
+export type MesReconciliado = {
+  month: string;
+  remote: number;
+  stored: number;
+  missing: number;
+  missing_uuids?: string[];
+};
+
+export type Reconciliacion = {
+  ok: boolean;
+  startedAt: string;
+  meses: MesReconciliado[];
+};
+
+function esMesReconciliado(value: unknown): value is MesReconciliado {
+  if (typeof value !== 'object' || value === null) return false;
+  const row = value as Record<string, unknown>;
+  return (
+    typeof row['month'] === 'string' &&
+    typeof row['remote'] === 'number' &&
+    typeof row['stored'] === 'number' &&
+    typeof row['missing'] === 'number'
+  );
+}
+
+export async function ultimaReconciliacion(): Promise<Reconciliacion | null> {
+  const { data, error } = await supabaseAdmin()
+    .from('job_runs')
+    .select('started_at, detail')
+    .eq('kind', 'ingest')
+    .not('detail', 'is', null)
+    .order('started_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) fail('job_runs', error.message);
+  if (!data?.detail || typeof data.detail !== 'object' || Array.isArray(data.detail)) return null;
+
+  const detail = data.detail as Record<string, unknown>;
+  const crudo = detail['reconciliation'];
+  if (!Array.isArray(crudo)) return null;
+
+  return {
+    ok: detail['reconciliation_ok'] === true,
+    startedAt: data.started_at,
+    meses: crudo.filter(esMesReconciliado),
+  };
 }

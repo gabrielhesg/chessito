@@ -1,4 +1,4 @@
-import { openingPerformance, analysisCoverage } from '@/lib/data';
+import { openingPerformance, analysisCoverage, openingResolution } from '@/lib/data';
 import { Muestra, Panel, Tabla, Vacio, filaAtenuada, pct } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
@@ -10,10 +10,17 @@ export const dynamic = 'force-dynamic';
  * ese grupo crece hay un bug en el cargador de aperturas. Con INNER JOIN seria invisible.
  */
 export default async function AperturasPage() {
-  const [filas, cobertura] = await Promise.all([openingPerformance(), analysisCoverage()]);
+  // El conteo de "Sin resolver" sale de `v_opening_resolution`, no de sumar filas en
+  // TypeScript: es la misma cuenta que vigila el chequeo `aperturas_sin_resolver`.
+  const [filas, cobertura, resolucion] = await Promise.all([
+    openingPerformance(),
+    analysisCoverage(),
+    openingResolution(),
+  ]);
 
-  const sinResolver = filas.filter((f) => f.opening_id === null).reduce((s, f) => s + (f.n ?? 0), 0);
-  const total = filas.reduce((s, f) => s + (f.n ?? 0), 0);
+  const sinResolver = resolucion?.n_unresolved ?? 0;
+  const total = resolucion?.n_games ?? 0;
+  const pctSinResolver = (resolucion?.pct_unresolved ?? 0) * 100;
   const analizadas = cobertura.reduce((s, c) => s + (c.n_analyzed ?? 0), 0);
   const totalPartidas = cobertura.reduce((s, c) => s + (c.n_games ?? 0), 0);
 
@@ -36,9 +43,8 @@ export default async function AperturasPage() {
 
       {sinResolver > 0 ? (
         <p className="rounded border border-[var(--color-aviso)] px-3 py-2 text-sm text-[var(--color-aviso)]">
-          Sin resolver por EPD: {sinResolver} de {total} partidas (
-          {total > 0 ? ((sinResolver / total) * 100).toFixed(2) : '0'}%). Si esto crece, hay un bug
-          en el cargador de aperturas.
+          Sin resolver por EPD: {sinResolver} de {total} partidas ({pctSinResolver.toFixed(2)}%).
+          Si esto crece, hay un bug en el cargador de aperturas.
         </p>
       ) : null}
 

@@ -1,4 +1,4 @@
-import { dataQuality, gamesByMonth, healthJobs, healthSummary, lastJobRuns } from '@/lib/data';
+import { dataQuality, gamesByMonth, healthJobs, healthSummary, lastJobRuns, ultimaReconciliacion } from '@/lib/data';
 import { Panel, Semaforo, Tabla, Vacio } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
@@ -8,12 +8,13 @@ export const dynamic = 'force-dynamic';
  * Sin ella, todo lo demas son numeros que hay que creer a ciegas.
  */
 export default async function SaludPage() {
-  const [chequeos, jobs, resumen, corridas, meses] = await Promise.all([
+  const [chequeos, jobs, resumen, corridas, meses, reconciliacion] = await Promise.all([
     dataQuality(),
     healthJobs(),
     healthSummary(),
     lastJobRuns(15),
     gamesByMonth(),
+    ultimaReconciliacion(),
   ]);
 
   const ingesta = jobs.find((j) => j.kind === 'ingest');
@@ -70,6 +71,53 @@ export default async function SaludPage() {
                 </tr>
               ))}
           </Tabla>
+        )}
+      </Panel>
+
+      <Panel
+        title="Reconciliacion contra chess.com"
+        subtitle="De las partidas que chess.com reporta en cada archivo mensual, cuantas quedaron guardadas. Se compara uuid a uuid."
+      >
+        {reconciliacion === null ? (
+          <Vacio>Todavia no hay una ingesta con reconciliacion registrada.</Vacio>
+        ) : (
+          <>
+            <p className={`mb-3 text-sm ${reconciliacion.ok ? 'text-[var(--color-bien)]' : 'text-[var(--color-mal)]'}`}>
+              <Semaforo ok={reconciliacion.ok}>
+                {reconciliacion.ok
+                  ? `Calzan todas las partidas de los ${reconciliacion.meses.length} archivos sincronizados.`
+                  : `Faltan ${reconciliacion.meses.reduce((total, m) => total + m.missing, 0)} partidas que chess.com si reporta.`}
+              </Semaforo>{' '}
+              <span className="text-[var(--color-tenue)]">
+                Corrida del{' '}
+                {new Date(reconciliacion.startedAt).toLocaleString('es-CL', {
+                  timeZone: 'America/Santiago',
+                  dateStyle: 'short',
+                  timeStyle: 'short',
+                })}
+                .
+              </span>
+            </p>
+            <Tabla headers={['Archivo', 'chess.com', 'Guardadas', 'Faltan', 'Cuales']}>
+              {[...reconciliacion.meses]
+                .sort((a, b) => b.missing - a.missing || b.month.localeCompare(a.month))
+                .slice(0, 24)
+                .map((m) => (
+                  <tr
+                    key={m.month}
+                    className={`border-b border-[var(--color-borde)]/50 ${m.missing > 0 ? 'text-[var(--color-mal)]' : ''}`}
+                  >
+                    <td className="py-1.5 pr-3 tabular-nums">{m.month}</td>
+                    <td className="py-1.5 pr-3 tabular-nums">{m.remote}</td>
+                    <td className="py-1.5 pr-3 tabular-nums">{m.stored}</td>
+                    <td className="py-1.5 pr-3 tabular-nums">{m.missing}</td>
+                    <td className="py-1.5 pr-3 font-mono text-xs">
+                      {m.missing_uuids?.length ? m.missing_uuids.join(', ') : '—'}
+                    </td>
+                  </tr>
+                ))}
+            </Tabla>
+          </>
         )}
       </Panel>
 
@@ -137,11 +185,7 @@ export default async function SaludPage() {
               Pendientes de analizar: <strong className="tabular-nums">{resumen?.n_pending ?? 0}</strong>
             </li>
           </ul>
-          <p className="mt-3 text-xs text-[var(--color-tenue)]">
-            La reconciliacion contra chess.com corre en cada ingesta y queda en el detalle de su
-            fila de job_runs: compara uuid a uuid las partidas que chess.com reporta contra las
-            que quedaron guardadas.
-          </p>
+
         </Panel>
       </div>
     </div>
