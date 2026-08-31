@@ -5,7 +5,12 @@ preguntas que la plataforma no te da gratis: contra qué aperturas pierdes, cuá
 por cansancio o tilt, dónde cuelgas piezas de verdad, y si tus errores vienen cuando juegas
 rápido.
 
-Esto es el paquete de especificación. El código lo escribe Claude Code a partir de estos
+La Fase 1 ya está construida: la app Next.js, la ingesta desde chess.com con reconciliación,
+la carga de aperturas de Lichess y las páginas `/`, `/aperturas`, `/ritmo`, `/registro` y
+`/salud`. Los pasos manuales que faltan (Supabase, Vercel, GitHub) están en
+**[docs/DESPLIEGUE.md](docs/DESPLIEGUE.md)**, pantalla por pantalla.
+
+Las fases 2 a 4 siguen siendo especificación: el código lo escribe Claude Code a partir de estos
 archivos.
 
 ## Empieza acá
@@ -28,6 +33,7 @@ CLAUDE.md                          contexto permanente del proyecto y las trampa
 PLAN.md                            las cuatro fases y sus criterios de aceptación
 docs/ENGINEERING.md                estándares obligatorios: tipado, tests, CI, errores
 docs/ENVIRONMENTS.md               ambientes dev y prod, ramas, secretos, cómo promover
+docs/DESPLIEGUE.md                 los pasos manuales de Supabase, Vercel y GitHub
 docs/CONFIANZA.md                  cómo se verifica que el análisis es confiable
 docs/DECISIONES-DE-STACK.md        por qué Supabase y Vercel, qué se descartó, cómo salir
 docs/DATA-SOURCES.md               API de chess.com, aperturas de Lichess, parseo de PGN
