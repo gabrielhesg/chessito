@@ -10,6 +10,12 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+    // Los dos archivos de integracion comparten la MISMA base (`TEST_DB_URL`) y uno de ellos
+    // hace `drop schema public cascade` para partir de cero. En paralelo eso es una carrera:
+    // en CI se cayo con "referenced schema was concurrently dropped" mientras un archivo
+    // aplicaba las migraciones y el otro borraba el esquema. Los archivos corren en serie.
+    // La suite completa demora ~5 s, asi que no se pierde nada medible.
+    fileParallelism: false,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],

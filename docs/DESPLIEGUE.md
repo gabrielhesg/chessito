@@ -20,11 +20,20 @@ Son los dos que permite el plan gratuito. No intentes un tercero.
 ## 2. Supabase · aplicar las migraciones (dev primero, siempre)
 
 En el proyecto **chessito-dev**, menu izquierdo → **SQL Editor** → **New query**. Pega y ejecuta
-los tres archivos, **en este orden**, uno por vez:
+**todos** los archivos de `supabase/migrations/`, **en orden numerico**, uno por vez, borrando
+el editor entre uno y otro:
 
-1. `supabase/migrations/0001_init.sql`
-2. `supabase/migrations/0002_observability.sql`
-3. `supabase/migrations/0003_session_features.sql`
+1. `0001_init.sql` — tablas, tipos y las primeras vistas
+2. `0002_observability.sql` — `job_runs` y los diez chequeos de calidad
+3. `0003_session_features.sql` — la funcion de sesiones
+4. `0004_portada_y_reconciliacion.sql` — las vistas de la portada
+5. `0005_vistas_sin_definer.sql` — cierra el acceso de la anon key a las vistas
+
+Cada uno responde "Success. No rows returned": estan creando estructura, no devolviendo datos.
+
+El 0005 no es opcional. Sin el, el linter de Supabase marca las quince vistas como
+"Security Definer View" en CRITICAL, y tiene razon: cualquiera con la anon key podria leer el
+historico. El detalle esta escrito en la propia migracion.
 
 Comprueba que quedo bien con esta consulta, que tiene que devolver diez filas en verde:
 
@@ -33,6 +42,9 @@ select check_name, ok from v_data_quality;
 ```
 
 Cuando la app funcione en dev, repite exactamente lo mismo en **chessito-prod**.
+
+Despues de aplicarlas, revisa **Advisors** → **Security** en el menu de Supabase: no deberia
+quedar ningun hallazgo CRITICAL.
 
 > Alternativa: `pnpm db:push --env dev` hace lo mismo desde la terminal si tienes
 > `SUPABASE_DB_URL_DEV` en `.env.local`. Lleva la cuenta en la tabla `schema_migrations`.

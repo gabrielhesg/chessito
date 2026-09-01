@@ -189,7 +189,7 @@ La app está construida y verificada de punta a punta contra el histórico real 
 | Acceso a datos | `lib/ingest/store.ts` (interfaz) con dos transportes: `supabase-store.ts` y `pg-store.ts` |
 | Lecturas de la app | `lib/data.ts`, todas con los tipos generados |
 | Páginas | `/`, `/aperturas`, `/ritmo`, `/registro`, `/salud`, `/entrar` |
-| Migraciones nuevas | `0003_session_features.sql` y `0004_portada_y_reconciliacion.sql` |
+| Migraciones nuevas | `0003_session_features.sql`, `0004_portada_y_reconciliacion.sql` y `0005_vistas_sin_definer.sql` |
 
 **Dos transportes, una sola lógica.** `SupabaseIngestStore` (PostgREST + service role) es el que
 corre en Vercel; `PgIngestStore` (conexión directa por `SUPABASE_DB_URL`) es el de los scripts y
@@ -225,6 +225,13 @@ la portada no sume filas en TypeScript), `v_monthly_activity_wilson` (lo mismo q
 pelado y la regla es usar Wilson) y `v_opening_resolution` (cuántas partidas quedan sin resolver
 por EPD, que es el numerador del chequeo `aperturas_sin_resolver`). Las originales de 0001 y 0002
 quedan intactas: nunca se edita una migración aplicada.
+
+**Las vistas corren con `security_invoker = on`.** Lo agrego la migracion 0005, y es una regla
+para toda vista nueva. Una vista creada por `postgres` se ejecuta con los permisos de quien la
+definio, asi que se salta el RLS de las tablas que lee; como Supabase le da SELECT sobre
+`public` a `anon` por omision, las quince vistas eran legibles con la anon key, que viaja al
+navegador. Medido en la base real: el mismo `count(*)` daba 9.650 filas con el rol anon antes
+del arreglo y 0 despues. Si agregas una vista, va con `security_invoker`.
 
 **Lo que la Fase 2 necesita saber.** `lib/chess/clock.ts` ya existe, está testeado contra
 fixtures reales y resuelve la trampa 1 completa (incremento, ply n-2, plies 1 y 2 contra
