@@ -150,7 +150,18 @@ Crea tambien la rama `dev` (`git checkout -b dev && git push -u origin dev`). El
 
 ## 10. Primera carga de datos
 
-Con las migraciones aplicadas en dev:
+Son dos pasos y **el orden importa**: si ingieres antes de cargar las aperturas, las partidas
+quedan guardadas pero sin apertura resuelta.
+
+**Desde el navegador**, que es el camino normal (los secretos del paso 8 tienen que estar):
+
+1. **Actions** → workflow **openings** → **Run workflow**. Una vez por base de datos.
+2. **Actions** → workflow **ingest** → **Run workflow** → alcance `full`.
+
+El ambiente sale de la rama: desde `main` escribe en produccion (y pide tu aprobacion), desde
+cualquier otra escribe en dev.
+
+**Desde una terminal**, si la tienes a mano:
 
 ```bash
 cp .env.example .env.local     # y completa las claves de chessito-dev
@@ -160,10 +171,7 @@ pnpm ingest --full             # todo el historico de chess.com
 ```
 
 `pnpm ingest --full` con ~9.700 partidas demora unos dos minutos y es idempotente: correrlo dos
-veces no cambia nada.
-
-Sin terminal a mano: entra a **Actions → ingest → Run workflow**, elige `full` y el ambiente
-sale de la rama.
+veces no cambia nada. `openings:load` tambien.
 
 Para produccion, lo mismo con `.env.local` apuntando a `chessito-prod`, o disparando el workflow
 desde `main`.

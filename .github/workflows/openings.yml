@@ -1,0 +1,35 @@
+name: openings
+
+# Carga las ~3.800 aperturas de Lichess en la tabla `openings`. Se corre UNA VEZ por base de
+# datos, antes de la primera ingesta: sin ella, todas las partidas quedan sin apertura resuelta
+# y la pregunta 1 del proyecto no se puede responder.
+#
+# Existe como workflow y no solo como `pnpm openings:load` porque el proyecto se opera desde el
+# navegador, incluso desde el celular. Es idempotente (`on conflict (epd) do nothing`), asi que
+# volver a correrla no hace dano.
+on:
+  workflow_dispatch:
+
+jobs:
+  cargar:
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'development' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Cargar aperturas
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          CHESSCOM_USERNAME: ${{ secrets.CHESSCOM_USERNAME }}
+          OWNER_EMAIL: ${{ secrets.OWNER_EMAIL }}
+          CRON_SECRET: no-aplica-en-actions
+          APP_ENV: ${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
+        run: pnpm openings:load
