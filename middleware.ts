@@ -14,11 +14,12 @@ import { NextResponse, type NextRequest } from 'next/server';
 export async function middleware(request: NextRequest) {
   const response = NextResponse.next({ request });
 
-  const url = process.env['NEXT_PUBLIC_SUPABASE_URL'];
-  const anonKey = process.env['NEXT_PUBLIC_SUPABASE_ANON_KEY'];
+  // Se aceptan los nombres con prefijo como respaldo; ver la nota en lib/env.ts.
+  const url = process.env['SUPABASE_URL'] ?? process.env['NEXT_PUBLIC_SUPABASE_URL'];
+  const anonKey = process.env['SUPABASE_ANON_KEY'] ?? process.env['NEXT_PUBLIC_SUPABASE_ANON_KEY'];
   const ownerEmail = process.env['OWNER_EMAIL'];
   if (!url || !anonKey || !ownerEmail) {
-    return new NextResponse('Faltan variables de entorno de Supabase o OWNER_EMAIL', { status: 500 });
+    return new NextResponse('Faltan SUPABASE_URL, SUPABASE_ANON_KEY u OWNER_EMAIL en las variables de entorno', { status: 500 });
   }
 
   const supabase = createServerClient(url, anonKey, {

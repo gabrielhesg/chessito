@@ -67,13 +67,20 @@ En cada proyecto, **Project Settings**:
 
 | Clave | Pantalla |
 |---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Settings → **API** → Project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Settings → **API** → `anon` `public` |
+| `SUPABASE_URL` | Settings → **API** → Project URL |
+| `SUPABASE_ANON_KEY` | Settings → **API** → `anon` `public` (en proyectos nuevos, **publishable**) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Settings → **API** → `service_role` (**secreta**) |
 | `SUPABASE_DB_URL` | Settings → **Database** → Connection string → URI (reemplaza `[YOUR-PASSWORD]`) |
 | id del proyecto | Settings → **General** → Reference ID |
 
-**La `service_role` nunca lleva prefijo `NEXT_PUBLIC_`.** El build falla a proposito si alguien
+**Ninguna variable de este proyecto lleva prefijo `NEXT_PUBLIC_`.** La app no tiene componentes
+cliente: todo el acceso a datos es del lado servidor, asi que ningun valor necesita viajar al
+navegador. Vercel ademas se niega a guardar como secreto una variable con ese prefijo, porque el
+prefijo significa lo contrario. Si ya tienes cargadas las versiones con prefijo, siguen
+funcionando como respaldo, pero lo correcto es el nombre corto.
+
+**La `service_role` es la llave maestra**: salta todas las restricciones de la base. Va como
+variable de entorno encriptada y nunca como valor publico. El build falla a proposito si alguien
 la importa desde un componente cliente.
 
 ## 5. Vercel · conectar el repositorio
@@ -89,8 +96,8 @@ solo **Production** y otra marcando **Preview** y **Development**:
 
 | Variable | Production (marca solo Production) | Preview + Development |
 |---|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | la de **chessito-prod** | la de **chessito-dev** |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | anon de **prod** | anon de **dev** |
+| `SUPABASE_URL` | la de **chessito-prod** | la de **chessito-dev** |
+| `SUPABASE_ANON_KEY` | anon de **prod** | anon de **dev** |
 | `SUPABASE_SERVICE_ROLE_KEY` | service_role de **prod** | service_role de **dev** |
 | `CHESSCOM_USERNAME` | `gabrielhesg` | `gabrielhesg` |
 | `OWNER_EMAIL` | `gabrielhesg@gmail.com` | `gabrielhesg@gmail.com` |
@@ -125,8 +132,8 @@ En cada uno, **Environment secrets**:
 
 | Secreto | En `development` | En `production` |
 |---|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | dev | prod |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | dev | prod |
+| `SUPABASE_URL` | dev | prod |
+| `SUPABASE_ANON_KEY` | dev | prod |
 | `SUPABASE_SERVICE_ROLE_KEY` | dev | prod |
 | `SUPABASE_DB_URL` | dev | prod |
 | `CHESSCOM_USERNAME` | `gabrielhesg` | `gabrielhesg` |

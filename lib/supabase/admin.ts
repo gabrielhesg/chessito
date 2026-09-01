@@ -14,7 +14,7 @@ let cached: AdminClient | null = null;
 
 export function supabaseAdmin(): AdminClient {
   if (cached) return cached;
-  cached = createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
+  cached = createClient<Database>(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   return cached;
