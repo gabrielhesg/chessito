@@ -281,7 +281,7 @@ Cada uno se agrega a `package.json` en el fase que lo crea.
 | `pnpm dev` | Next.js | Fase 1 |
 | `pnpm db:push` | `scripts/db-push.ts`, aplica migraciones en orden y lleva la cuenta en `schema_migrations`. Acepta `--env dev`, `--env prod` y `--db-url`. Primero dev, siempre | Fase 1 |
 | `pnpm db:types` | `scripts/db-types.ts`. Con `--env` usa el CLI oficial de Supabase; con `--db-url` introspecciona cualquier Postgres (el CLI necesita Docker y no siempre hay) | Fase 1 |
-| `pnpm openings:load` | `scripts/load-openings.ts`, carga los TSV de Lichess. Acepta `--from-dir` donde la red bloquea raw.githubusercontent.com | Fase 1 |
+| `pnpm openings:load` | `scripts/load-openings.ts`, carga los TSV de Lichess. Acepta `--from-dir` donde la red bloquea raw.githubusercontent.com. Tambien es el workflow `openings`, para operar sin terminal | Fase 1 |
 | `pnpm ingest` | `scripts/ingest.ts`, mismo `runIngest` que la ruta de cron. `--full` para todo el histórico | Fase 1 |
 | `pnpm moves:extract` | `scripts/extract-moves.ts`, puebla `moves` desde el PGN | Fase 2 |
 | `pnpm analyze` | `scripts/analyze.ts`, el analizador con Stockfish nativo. Lo corre GitHub Actions, y también sirve en local | Fase 3 |
