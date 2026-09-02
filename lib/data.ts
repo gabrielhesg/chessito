@@ -19,6 +19,10 @@ export type HealthJobs = Views['v_health_jobs']['Row'];
 export type HealthSummary = Views['v_health_summary']['Row'];
 export type GamesByMonth = Views['v_games_by_month']['Row'];
 export type AnalysisCoverage = Views['v_analysis_coverage']['Row'];
+export type MoveTimeByPly = Views['v_move_time_by_ply']['Row'];
+export type MoveTimeByPhase = Views['v_move_time_by_phase']['Row'];
+export type MoveTimeDistribution = Views['v_move_time_distribution']['Row'];
+export type TimeoutMoment = Views['v_timeout_moment']['Row'];
 export type JobRun = Database['public']['Tables']['job_runs']['Row'];
 export type Game = Database['public']['Tables']['games']['Row'];
 
@@ -111,6 +115,35 @@ export async function gamesByMonth(): Promise<GamesByMonth[]> {
 export async function analysisCoverage(): Promise<AnalysisCoverage[]> {
   const { data, error } = await supabaseAdmin().from('v_analysis_coverage').select('*');
   if (error) fail('v_analysis_coverage', error.message);
+  return data ?? [];
+}
+
+/** Tiempo gastado por numero de jugada. Solo hasta el ply 60: mas alla la muestra es minuscula. */
+export async function moveTimeByPly(): Promise<MoveTimeByPly[]> {
+  const { data, error } = await supabaseAdmin()
+    .from('v_move_time_by_ply')
+    .select('*')
+    .lte('ply', 60)
+    .order('ply');
+  if (error) fail('v_move_time_by_ply', error.message);
+  return data ?? [];
+}
+
+export async function moveTimeByPhase(): Promise<MoveTimeByPhase[]> {
+  const { data, error } = await supabaseAdmin().from('v_move_time_by_phase').select('*').order('phase');
+  if (error) fail('v_move_time_by_phase', error.message);
+  return data ?? [];
+}
+
+export async function moveTimeDistribution(): Promise<MoveTimeDistribution[]> {
+  const { data, error } = await supabaseAdmin().from('v_move_time_distribution').select('*');
+  if (error) fail('v_move_time_distribution', error.message);
+  return data ?? [];
+}
+
+export async function timeoutMoment(): Promise<TimeoutMoment[]> {
+  const { data, error } = await supabaseAdmin().from('v_timeout_moment').select('*').order('phase');
+  if (error) fail('v_timeout_moment', error.message);
   return data ?? [];
 }
 

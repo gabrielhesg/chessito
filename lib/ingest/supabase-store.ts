@@ -1,8 +1,16 @@
 import 'server-only';
 import type { AdminClient } from '@/lib/supabase/admin';
 import type { GameRow } from '@/lib/chess/game';
+import type { MoveRow } from '@/lib/chess/moves';
 import type { Json } from '@/lib/database.types';
-import type { IngestStore, JobRunInput, JobRunResult, OpeningIndexEntry, OpeningInsert } from './store';
+import type {
+  GameForMoves,
+  IngestStore,
+  JobRunInput,
+  JobRunResult,
+  OpeningIndexEntry,
+  OpeningInsert,
+} from './store';
 
 /** Implementacion sobre PostgREST con la service role key. Es la que corre en Vercel. */
 export class SupabaseIngestStore implements IngestStore {
@@ -112,6 +120,54 @@ export class SupabaseIngestStore implements IngestStore {
       })
       .eq('id', id);
     if (error) throw new Error(`No se pudo cerrar job_runs ${id}: ${error.message}`);
+  }
+
+  async loadGamesForMoves(): Promise<GameForMoves[]> {
+    const rows: GameForMoves[] = [];
+    const pageSize = 500;
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await this.client
+        .from('v_games_pending_moves')
+        .select('id, pgn, my_color, base_seconds, increment_secs, opening_ply_count')
+        .range(from, from + pageSize - 1);
+      if (error) throw new Error(`No se pudo leer las partidas pendientes de moves: ${error.message}`);
+      if (!data || data.length === 0) break;
+      for (const row of data) {
+        // Las columnas de v_games_pending_moves vienen de games, que las declara NOT NULL;
+        // el generador de tipos las marca opcionales solo porque salen de un LEFT JOIN. Si
+        // alguna vez llegan null de verdad, es un dato corrupto y hay que caerse, no seguir
+        // con un valor inventado.
+        if (row.id === null || row.pgn === null || row.base_seconds === null || row.increment_secs === null) {
+          throw new Error(`Fila incompleta en v_games_pending_moves: ${JSON.stringify(row)}`);
+        }
+        rows.push({
+          id: row.id,
+          pgn: row.pgn,
+          myColor: row.my_color as 'white' | 'black',
+          baseSeconds: row.base_seconds,
+          incrementSecs: row.increment_secs,
+          openingPlyCount: row.opening_ply_count ?? 0,
+        });
+      }
+      if (data.length < pageSize) break;
+    }
+    return rows;
+  }
+
+  async insertMoves(gameId: number, rows: MoveRow[]): Promise<void> {
+    if (rows.length === 0) return;
+    const { error } = await this.client.from('moves').insert(rows.map((row) => ({ game_id: gameId, ...row })));
+    if (error) throw new Error(`No se pudieron guardar las jugadas de la partida ${gameId}: ${error.message}`);
+  }
+
+  async markMovesFailed(gameId: number): Promise<void> {
+    const { error } = await this.client.from('games').update({ analysis_state: 'failed' }).eq('id', gameId);
+    if (error) throw new Error(`No se pudo marcar failed la partida ${gameId}: ${error.message}`);
+  }
+
+  async markMovesEmpty(gameId: number): Promise<void> {
+    const { error } = await this.client.from('games').update({ analysis_state: 'skipped' }).eq('id', gameId);
+    if (error) throw new Error(`No se pudo marcar skipped la partida ${gameId}: ${error.message}`);
   }
 
   close(): Promise<void> {
