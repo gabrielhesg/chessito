@@ -9,11 +9,20 @@ import { z } from 'zod';
  * donde no hay secretos de Supabase y no se ejecuta ninguna consulta. Los procesos batch
  * llaman a `assertEnv()` en su primera linea y asi conservan el "falla al inicio con el
  * nombre de la variable que falta" que exige el estandar.
+ *
+ * Sobre los nombres: la URL y la anon key NO llevan prefijo `NEXT_PUBLIC_`, aunque esa sea la
+ * convencion de Supabase. Aca no hace falta y estorba: la app no tiene un solo componente
+ * cliente y todo el acceso a datos es del lado servidor, asi que esos valores no necesitan
+ * viajar al navegador. Ademas Vercel, con razon, se niega a guardar como secreto una variable
+ * con ese prefijo, porque el prefijo significa justamente lo contrario.
+ *
+ * Se siguen aceptando los nombres con prefijo como respaldo, para no romper una instalacion
+ * que ya los tenga cargados.
  */
 
 const schema = z.object({
-  NEXT_PUBLIC_SUPABASE_URL: z.url(),
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
+  SUPABASE_URL: z.url(),
+  SUPABASE_ANON_KEY: z.string().min(1),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
   CHESSCOM_USERNAME: z.string().min(1),
   OWNER_EMAIL: z.email(),
@@ -32,11 +41,21 @@ export type AppEnv = 'prod' | 'dev';
 
 let cached: Env | null = null;
 
+/** Acepta los nombres con prefijo como respaldo de los sin prefijo. */
+function withLegacyNames(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return {
+    ...source,
+    SUPABASE_URL: source['SUPABASE_URL'] ?? source['NEXT_PUBLIC_SUPABASE_URL'],
+    SUPABASE_ANON_KEY: source['SUPABASE_ANON_KEY'] ?? source['NEXT_PUBLIC_SUPABASE_ANON_KEY'],
+  };
+}
+
 function readEnv(): Env {
   if (cached) return cached;
 
-  const parsed = schema.safeParse(process.env);
-  const parsedOptional = optionalSchema.safeParse(process.env);
+  const source = withLegacyNames(process.env);
+  const parsed = schema.safeParse(source);
+  const parsedOptional = optionalSchema.safeParse(source);
 
   if (!parsed.success || !parsedOptional.success) {
     const issues = [

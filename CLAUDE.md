@@ -90,9 +90,15 @@ una métrica nueva, primero se agrega la vista a `supabase/migrations/`. Las der
 fila (clasificar una jugada, calcular el tiempo de una jugada) sí van en el script que escribe
 esa fila.
 
-**Nunca `NEXT_PUBLIC_` en la service role key.** El cliente admin vive en
-`lib/supabase/admin.ts` y su primera línea es `import 'server-only'`, para que el build falle
-si alguien lo importa desde un componente cliente.
+**Ninguna variable lleva `NEXT_PUBLIC_`.** La app no tiene un solo componente cliente, así que
+ningún valor necesita viajar al navegador, ni siquiera la URL y la anon key de Supabase: se
+llaman `SUPABASE_URL` y `SUPABASE_ANON_KEY` a secas (los nombres con prefijo se siguen aceptando
+como respaldo, ver `lib/env.ts`). Vercel además se niega a guardar como secreto una variable con
+ese prefijo, porque el prefijo significa lo contrario.
+
+Y la service role key menos que ninguna: el cliente admin vive en `lib/supabase/admin.ts` y su
+primera línea es `import 'server-only'`, para que el build falle si alguien lo importa desde un
+componente cliente.
 
 **Versionar el análisis.** `games.engine_id` se construye al arrancar el analizador leyendo el
 `id name` que devuelve el motor, más el presupuesto de nodos y el número de hilos. No se
