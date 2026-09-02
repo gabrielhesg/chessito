@@ -12,6 +12,7 @@ const NAV = [
   { href: '/', label: 'Portada' },
   { href: '/aperturas', label: 'Aperturas' },
   { href: '/ritmo', label: 'Ritmo' },
+  { href: '/reloj', label: 'Reloj' },
   { href: '/registro', label: 'Registro' },
   { href: '/salud', label: 'Salud' },
 ] as const;
