@@ -20,14 +20,30 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'development' }}
     steps:
+      - name: Verificar secretos del ambiente
+        id: secretos
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::warning::Sin los secretos del ambiente '${{ github.ref == 'refs/heads/main' && 'production' || 'development' }}' (ver docs/DESPLIEGUE.md, paso 8) esta corrida programada no puede ingerir. Se salta sin marcar el workflow en rojo hasta que esten cargados."
+            echo "listos=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "listos=true" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/checkout@v4
+        if: steps.secretos.outputs.listos == 'true'
       - uses: pnpm/action-setup@v4
+        if: steps.secretos.outputs.listos == 'true'
       - uses: actions/setup-node@v4
+        if: steps.secretos.outputs.listos == 'true'
         with:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+        if: steps.secretos.outputs.listos == 'true'
       - name: Ingesta
+        if: steps.secretos.outputs.listos == 'true'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
