@@ -454,6 +454,17 @@ export type Database = {
         }
         Relationships: []
       }
+      v_games_pending_moves: {
+        Row: {
+          id: number | null
+          pgn: string | null
+          my_color: Database["public"]["Enums"]["game_color"] | null
+          base_seconds: number | null
+          increment_secs: number | null
+          opening_ply_count: number | null
+        }
+        Relationships: []
+      }
       v_health_jobs: {
         Row: {
           kind: Database["public"]["Enums"]["job_kind"] | null
@@ -509,6 +520,32 @@ export type Database = {
         }
         Relationships: []
       }
+      v_move_time_by_phase: {
+        Row: {
+          phase: number | null
+          n: number | null
+          pct_under_3s_lower: number | null
+          avg_move_time_ms: number | null
+        }
+        Relationships: []
+      }
+      v_move_time_by_ply: {
+        Row: {
+          ply: number | null
+          n: number | null
+          avg_move_time_ms: number | null
+          median_move_time_ms: number | null
+        }
+        Relationships: []
+      }
+      v_move_time_distribution: {
+        Row: {
+          phase: number | null
+          time_bucket: string | null
+          n: number | null
+        }
+        Relationships: []
+      }
       v_opening_performance: {
         Row: {
           opening_id: string | null
@@ -531,6 +568,14 @@ export type Database = {
           n_games: number | null
           n_unresolved: number | null
           pct_unresolved: number | null
+        }
+        Relationships: []
+      }
+      v_timeout_moment: {
+        Row: {
+          phase: number | null
+          n_games: number | null
+          avg_ply: number | null
         }
         Relationships: []
       }

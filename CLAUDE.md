@@ -254,6 +254,58 @@ con el histórico cargado.
 `moves` está vacía; ninguna partida tiene `analysis_state = 'done'`, así que las columnas de
 motor de `/aperturas` salen vacías a propósito y `v_analysis_coverage` reporta 0 analizadas.
 
+## Estado al terminar la Fase 2
+
+`moves` ya está poblada desde el PGN, sin motor todavía. Verificado contra el histórico real
+(9.650 partidas, ~553.000 filas en `moves`): `pnpm moves:extract` demora ~2 minutos, es
+idempotente (la segunda corrida encuentra 0 pendientes) y dejó 0 partidas `failed`. Los diez
+chequeos de `v_data_quality` siguen en verde, incluidos los dos que dependen de `moves`
+(`tiempos_de_jugada_negativos` y `conteo_de_jugadas_no_calza`).
+
+| Pieza | Dónde |
+|---|---|
+| Fase de la partida, pura y testeada | `lib/chess/phase.ts` (`classifyPhase`, `isBookMove`) |
+| PGN a filas de `moves` | `lib/chess/moves.ts` (`buildMoveRows`), junta `pgn.ts` + `clock.ts` + `phase.ts` |
+| La única función de extracción | `lib/ingest/extract-moves.ts` (`runExtractMoves`), mismo patrón que `runIngest` |
+| Página | `/reloj` |
+| Migración nueva | `0006_reloj.sql` |
+
+**`piecesAfter` se calcula una sola vez, en `parsePgn`.** `lib/chess/phase.ts` necesita saber
+cuántas piezas (sin peones ni reyes) le quedan a cada bando para decidir el final, pero no
+vuelve a reproducir el PGN: `parsePgn` ya cuenta el tablero después de cada jugada (con
+`chess.board()`) y lo deja en `ParsedMove.piecesAfter`, igual que ya hacía con el EPD.
+
+**`IngestStore` se extendió, no se creó un store nuevo.** `moves:extract` no tiene un
+disparador serverless (no hay ruta ni cron de Vercel para esto en la Fase 2), pero igual reusa
+la misma interfaz de dos transportes que `pnpm ingest` y `pnpm openings:load`: la regla del
+proyecto es una interfaz con las dos implementaciones, no una por operación. Lo único nuevo del
+lado de PostgREST es la vista `v_games_pending_moves` (con `security_invoker`, sin grants para
+`anon`/`authenticated`): `SupabaseIngestStore` no puede expresar en PostgREST el
+`left join openings + not exists (select 1 from moves ...)` que decide qué partida le falta
+`moves`, así que esa vista hace ese trabajo. `PgIngestStore` hace la misma consulta directo en
+SQL, sin la vista.
+
+**Una partida con `ply_count = 0` (el rival abandonó antes de mover) no puede quedar en
+`pending` para siempre.** `insertMoves` con un arreglo vacío no inserta nada, así que sin un
+caso aparte esa partida reaparecería como pendiente en cada corrida de `moves:extract`. Se
+marca `analysis_state = 'skipped'` (`store.markMovesEmpty`), igual que la correspondencia sin
+`%clk`. Apareció una sola vez en las 9.650 partidas reales; sin ese caso, `pnpm test` habría
+pasado igual porque ningún fixture lo cubre — quedó atrapado corriendo `moves:extract` contra
+el histórico completo, no contra los tests unitarios.
+
+**Las cuatro vistas nuevas van con `security_invoker` desde que se crean.** A diferencia de las
+de 0001/0002/0004 (que necesitaron el arreglo retroactivo de 0005), `0006_reloj.sql` ya nace
+después de esa regla: cada vista se marca `security_invoker = on` y se le revocan los grants a
+`anon`/`authenticated` en la misma migración, no como parche posterior.
+
+**Lo que la Fase 3 necesita saber.** `moves.classification`, `moves.cp_loss`, `moves.eval_cp` y
+`moves.is_decided` siguen NULL/false: eso lo llena el analizador con Stockfish. `moves.phase` y
+`moves.is_book` ya están listos para que las vistas de `/errores` (`v_errors_by_phase`,
+`v_errors_by_move_time`, ya definidas en 0001) los usen apenas `classification` deje de ser
+NULL. `games.analysis_state` sigue en `'pending'` para casi todas las partidas: la Fase 2 solo
+lo toca para marcar `'skipped'` (sin jugadas) o `'failed'` (PGN no reproducible), nunca `'done'`
+— eso es del motor.
+
 ## Convenciones
 
 - Todo acceso a datos es del lado servidor: Server Components y route handlers. Nada de
@@ -319,3 +371,13 @@ Supabase Auth con signups deshabilitados **no deja entrar a nadie hasta que exis
 Después del primer deploy hay que crear el usuario a mano en el dashboard de Supabase, en
 Authentication > Users, con el mismo email que `OWNER_EMAIL`. Sin eso, `signInWithOtp` falla y
 la app queda inaccesible.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

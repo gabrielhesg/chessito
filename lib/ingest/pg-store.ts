@@ -1,6 +1,16 @@
 import { Client } from 'pg';
 import type { GameRow } from '@/lib/chess/game';
-import type { IngestStore, JobRunInput, JobRunResult, OpeningIndexEntry, OpeningInsert } from './store';
+import type { MoveRow } from '@/lib/chess/moves';
+import type {
+  GameForMoves,
+  IngestStore,
+  JobRunInput,
+  JobRunResult,
+  OpeningIndexEntry,
+  OpeningInsert,
+} from './store';
+
+const MOVE_COLUMNS = ['ply', 'is_mine', 'san', 'uci', 'phase', 'clock_ms', 'move_time_ms', 'is_book'] as const;
 
 /**
  * Implementacion por conexion directa a Postgres (`SUPABASE_DB_URL`).
@@ -161,6 +171,61 @@ export class PgIngestStore implements IngestStore {
         JSON.stringify(result.detail ?? null),
       ],
     );
+  }
+
+  async loadGamesForMoves(): Promise<GameForMoves[]> {
+    const client = await this.connect();
+    const res = await client.query<{
+      id: number;
+      pgn: string;
+      my_color: 'white' | 'black';
+      base_seconds: number;
+      increment_secs: number;
+      opening_ply_count: number | null;
+    }>(
+      `select g.id, g.pgn, g.my_color, g.base_seconds, g.increment_secs,
+              o.ply_count as opening_ply_count
+         from games g
+         left join openings o on o.id = g.opening_id
+        where g.analysis_state not in ('skipped', 'failed')
+          and not exists (select 1 from moves m where m.game_id = g.id)
+        order by g.id`,
+    );
+    return res.rows.map((row) => ({
+      id: row.id,
+      pgn: row.pgn,
+      myColor: row.my_color,
+      baseSeconds: row.base_seconds,
+      incrementSecs: row.increment_secs,
+      openingPlyCount: row.opening_ply_count ?? 0,
+    }));
+  }
+
+  async insertMoves(gameId: number, rows: MoveRow[]): Promise<void> {
+    if (rows.length === 0) return;
+    const client = await this.connect();
+    const values: unknown[] = [gameId];
+    const tuples = rows.map((row, rowIndex) => {
+      const placeholders = MOVE_COLUMNS.map(
+        (_, colIndex) => `$${rowIndex * MOVE_COLUMNS.length + colIndex + 2}`,
+      );
+      for (const column of MOVE_COLUMNS) values.push(row[column]);
+      return `($1, ${placeholders.join(',')})`;
+    });
+    await client.query(
+      `insert into moves (game_id, ${MOVE_COLUMNS.join(',')}) values ${tuples.join(',')}`,
+      values,
+    );
+  }
+
+  async markMovesFailed(gameId: number): Promise<void> {
+    const client = await this.connect();
+    await client.query("update games set analysis_state = 'failed' where id = $1", [gameId]);
+  }
+
+  async markMovesEmpty(gameId: number): Promise<void> {
+    const client = await this.connect();
+    await client.query("update games set analysis_state = 'skipped' where id = $1", [gameId]);
   }
 
   async close(): Promise<void> {
