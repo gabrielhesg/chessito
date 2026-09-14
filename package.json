@@ -18,7 +18,9 @@
     "db:types": "tsx --conditions=react-server scripts/db-types.ts",
     "openings:load": "tsx --conditions=react-server scripts/load-openings.ts",
     "ingest": "tsx --conditions=react-server scripts/ingest.ts",
-    "moves:extract": "tsx --conditions=react-server scripts/extract-moves.ts"
+    "moves:extract": "tsx --conditions=react-server scripts/extract-moves.ts",
+    "analyze": "tsx --conditions=react-server scripts/analyze.ts",
+    "backup:ndjson": "tsx --conditions=react-server scripts/backup-ndjson.ts"
   },
   "dependencies": {
     "@mliebelt/pgn-parser": "1.4.19",

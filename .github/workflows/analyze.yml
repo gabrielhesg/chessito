@@ -1,0 +1,82 @@
+name: analyze
+
+# El motor. Corre en GitHub Actions porque necesita lanzar un binario nativo (docs/ANALYSIS-SPEC.md):
+# ni Supabase Edge Functions (2s de CPU por invocacion, Deno no lanza binarios), ni Vercel
+# Functions (300s de tope) alcanzan para ~14s por partida.
+#
+# Solo escribe en produccion, y solo desde main: el analizador toca `games` y `moves` de verdad,
+# no hay un camino de "development" separado como en ingest.yml (item 15 de
+# docs/prompts/fase3-motor.md). El ambiente `production` ya tiene aprobacion manual configurada.
+on:
+  schedule:
+    - cron: '30 8 * * *'
+  workflow_dispatch:
+    inputs:
+      batch:
+        description: 'Cuantas partidas analizar en esta corrida (para hacer el backfill por tandas)'
+        required: false
+        default: '500'
+        type: string
+
+jobs:
+  analizar:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 330
+    steps:
+      - name: Verificar secretos del ambiente
+        id: secretos
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::warning::Sin los secretos del ambiente 'production' esta corrida programada no puede analizar. Se salta sin marcar el workflow en rojo hasta que esten cargados."
+            echo "listos=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "listos=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.secretos.outputs.listos == 'true'
+      - uses: pnpm/action-setup@v4
+        if: steps.secretos.outputs.listos == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.secretos.outputs.listos == 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        if: steps.secretos.outputs.listos == 'true'
+      - name: Instalar Stockfish
+        if: steps.secretos.outputs.listos == 'true'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq stockfish
+      - name: Calcular hilos disponibles
+        id: hilos
+        if: steps.secretos.outputs.listos == 'true'
+        run: echo "threads=$(( $(nproc) - 1 ))" >> "$GITHUB_OUTPUT"
+      - name: Analizar
+        if: steps.secretos.outputs.listos == 'true'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          CHESSCOM_USERNAME: ${{ secrets.CHESSCOM_USERNAME }}
+          OWNER_EMAIL: ${{ secrets.OWNER_EMAIL }}
+          CRON_SECRET: no-aplica-en-actions
+          APP_ENV: prod
+          STOCKFISH_PATH: /usr/games/stockfish
+          ENGINE_NODES: '800000'
+          ENGINE_THREADS: ${{ steps.hilos.outputs.threads }}
+        run: pnpm analyze --batch ${{ inputs.batch || '500' }}
+      - name: Respaldo NDJSON a Supabase Storage
+        if: steps.secretos.outputs.listos == 'true'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CHESSCOM_USERNAME: ${{ secrets.CHESSCOM_USERNAME }}
+          OWNER_EMAIL: ${{ secrets.OWNER_EMAIL }}
+          CRON_SECRET: no-aplica-en-actions
+          APP_ENV: prod
+        run: pnpm backup:ndjson
