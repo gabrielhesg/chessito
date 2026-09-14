@@ -306,6 +306,81 @@ NULL. `games.analysis_state` sigue en `'pending'` para casi todas las partidas: 
 lo toca para marcar `'skipped'` (sin jugadas) o `'failed'` (PGN no reproducible), nunca `'done'`
 — eso es del motor.
 
+## Estado al terminar la Fase 3
+
+El motor ya corre. Sin migración nueva: las columnas de `moves` y `games` para el análisis, la
+función SQL `win_pct`, el `job_kind = 'analyze'` y las vistas `v_errors_by_phase`,
+`v_errors_by_move_time` y `v_analysis_coverage` ya existían desde `0001_init.sql` — solo
+estaban sin poblar.
+
+| Pieza | Dónde |
+|---|---|
+| Cliente UCI, aislado y testeable con un motor simulado | `lib/engine/uci.ts` |
+| Los dos pasos de signo, puros | `lib/analysis/signs.ts` (`toWhitePerspective`, `computeMoveLoss`) |
+| `win_pct` reimplementado en TS (tiene que dar lo mismo que la función SQL) | `lib/analysis/winpct.ts` |
+| Clasificación y `is_decided` | `lib/analysis/classify.ts` |
+| `divergence_ply` | `lib/analysis/divergence.ts` |
+| La única función de análisis | `lib/analysis/run.ts` (`runAnalyze`) |
+| Acceso a datos del analizador (un solo transporte, ver abajo) | `lib/analysis/store.ts` |
+| Página | `/errores` |
+| Workflow | `.github/workflows/analyze.yml` (cron diario + `workflow_dispatch` con `batch`) |
+| Respaldo NDJSON a Supabase Storage | `scripts/backup-ndjson.ts`, corre como último paso del cron |
+
+**`lib/analysis/store.ts` NO tiene dos transportes, a propósito.** A diferencia de
+`IngestStore`, acá no hay un segundo camino que justifique la interfaz dual: el spec pide
+conexión directa a Postgres (`update ... returning` para reclamar lotes, una transacción por
+partida) y prohíbe explícitamente crear una ruta HTTP de análisis. Si alguna vez aparece un
+segundo transporte real para esto, ahí sí se extrae la interfaz.
+
+**El analizador no inserta filas en `moves`, las actualiza.** Las filas ya existen desde
+`moves:extract` (Fase 2), con `san`, `uci`, `phase`, `is_book`. `runAnalyze` lee esa lista,
+reproduce los prefijos UCI desde ahí (no vuelve a parsear el PGN), y hace `update ... where
+game_id = $ and ply = $` por cada jugada no-libro.
+
+**Las posiciones dentro del libro no se evalúan con el motor.** `runAnalyze` ubica el `ply`
+máximo con `is_book = true` y solo manda al motor las posiciones desde ahí hacia el final (más
+la posición límite, en memoria, para poder calcular la pérdida de la primera jugada no-libro —
+esa fila de `moves` en particular queda con `eval_cp` NULL, coherente con que ya está excluida
+de las vistas). Es el ahorro de nodos que asume `docs/ANALYSIS-SPEC.md` ("~70 posiciones
+después de descartar libro").
+
+**`mate_in` se normaliza a perspectiva de blancas, igual que `eval_cp`.** No documentado
+explícitamente en el spec pero coherente con el resto del esquema: si `mate_in` quedara en
+perspectiva del motor (del que mueve), mezclar ambas columnas en una consulta daría resultados
+sin sentido en la mitad de las partidas, igual que le pasaría a `eval_cp` sin el paso 1 de
+signo.
+
+**El test que realmente prueba el bug de signos.**
+`tests/analyze.integration.test.ts` no usa el binario real de Stockfish: usa un motor falso
+determinístico (`fakeEngine` en el propio test) que deja el eval en 0 hasta una jugada de
+negras específica y ahí salta a +700 (perspectiva blancas) y se queda fijo. Es la ÚNICA jugada
+de toda la partida que "empeora", y es de negras — exactamente el caso donde el bug clásico del
+paso 2 de signo (perdida calculada sin girar según quién movió) haría desaparecer el error. El
+test verifica el `classification` exacto de esa jugada contra Postgres real, no solo contra
+unitarios en memoria. `runAnalyze` acepta el motor como una interfaz (`AnalysisEngine`), no la
+clase `UciEngine`, justo para que este test no necesite el binario instalado — tampoco lo tiene
+el runner de `integracion` en CI.
+
+**`lib/analysis/store.ts` y `run.ts` no están en el umbral de cobertura de 80%.** Mismo
+criterio que `lib/ingest/{store,run,pg-store,supabase-store}.ts`: hablan con Postgres de
+verdad y se validan con el test de integración de arriba, no con unitarios en memoria. Están
+explícitamente excluidos en `vitest.config.mts` (`coverage.exclude`). `lib/engine/uci.ts` y el
+resto de `lib/analysis/` (`winpct`, `mate`, `signs`, `classify`, `divergence`) sí están dentro
+del umbral y a 100%.
+
+**El workflow `analyze.yml` solo corre en `main`, a diferencia de `ingest.yml`.** No hay un
+concepto de "development" para el análisis: el spec es explícito en que solo main escribe en
+producción, así que el job entero tiene `if: github.ref == 'refs/heads/main'` y
+`environment: production` fijo, sin la rama ternaria que sí tiene `ingest.yml`.
+
+**Lo que la Fase 4 necesita saber.** `puzzles` y `puzzle_attempts` siguen vacías. El respaldo
+NDJSON (`scripts/backup-ndjson.ts`) ya vuelca `puzzle_attempts` aunque esté vacía, así que Fase
+4 no tiene que tocar ese script, solo empezar a llenar la tabla. El filtro `MultiPV = 2` para
+descartar ejercicios ambiguos (spec, sección "Fase 4: filtro de calidad de los ejercicios") no
+está implementado: `UciEngine` hoy solo pide la mejor línea, no una segunda. `docs/validacion-lichess.md`
+queda con la plantilla lista pero sin completar — es un ritual manual de Gabriel, no algo que
+se automatice.
+
 ## Convenciones
 
 - Todo acceso a datos es del lado servidor: Server Components y route handlers. Nada de

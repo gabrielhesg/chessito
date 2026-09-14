@@ -23,6 +23,8 @@ export type MoveTimeByPly = Views['v_move_time_by_ply']['Row'];
 export type MoveTimeByPhase = Views['v_move_time_by_phase']['Row'];
 export type MoveTimeDistribution = Views['v_move_time_distribution']['Row'];
 export type TimeoutMoment = Views['v_timeout_moment']['Row'];
+export type ErrorsByPhase = Views['v_errors_by_phase']['Row'];
+export type ErrorsByMoveTime = Views['v_errors_by_move_time']['Row'];
 export type JobRun = Database['public']['Tables']['job_runs']['Row'];
 export type Game = Database['public']['Tables']['games']['Row'];
 
@@ -144,6 +146,18 @@ export async function moveTimeDistribution(): Promise<MoveTimeDistribution[]> {
 export async function timeoutMoment(): Promise<TimeoutMoment[]> {
   const { data, error } = await supabaseAdmin().from('v_timeout_moment').select('*').order('phase');
   if (error) fail('v_timeout_moment', error.message);
+  return data ?? [];
+}
+
+export async function errorsByPhase(): Promise<ErrorsByPhase[]> {
+  const { data, error } = await supabaseAdmin().from('v_errors_by_phase').select('*');
+  if (error) fail('v_errors_by_phase', error.message);
+  return data ?? [];
+}
+
+export async function errorsByMoveTime(): Promise<ErrorsByMoveTime[]> {
+  const { data, error } = await supabaseAdmin().from('v_errors_by_move_time').select('*');
+  if (error) fail('v_errors_by_move_time', error.message);
   return data ?? [];
 }
 
