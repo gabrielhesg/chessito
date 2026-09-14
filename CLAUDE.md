@@ -50,9 +50,10 @@ vacíos. Una fase con el CI en rojo no está terminada. Leerlo antes de escribir
 
 ## Reglas del proyecto
 
-**El motor corre en GitHub Actions**, en un workflow programado que instala Stockfish con `apt`
-y se conecta directo a Postgres. Todo el proyecto vive en la nube: Gabriel trabaja desde su
-celular o desde cualquier computador y no necesita tener nada encendido.
+**El motor corre en GitHub Actions**, en un workflow programado que baja el binario oficial de
+Stockfish desde sus releases de GitHub y se conecta directo a Postgres. Todo el proyecto vive en
+la nube: Gabriel trabaja desde su celular o desde cualquier computador y no necesita tener nada
+encendido.
 
 No corre en Vercel (300 s de tope, cron una vez al día), ni en Supabase (2 s de CPU por
 invocación y un isolate de Deno no puede lanzar un binario), ni en el navegador (10 veces más
@@ -439,11 +440,16 @@ Vercel dispara con GET.
 | Análisis con Stockfish | GitHub Actions | gratis (2.000 min/mes en repo privado) |
 
 Nada necesita un computador encendido. Stockfish se instala dentro del runner de GitHub Actions
-con `sudo apt-get install -y stockfish`, que lo deja en `/usr/games/stockfish`.
+bajando el binario oficial (`stockfish-linux-x86-64-universal.tar.gz`) desde los releases de
+`official-stockfish/Stockfish` en GitHub, no con `apt`: el paquete de Ubuntu queda congelado en
+versiones viejas (16-1build1 en 24.04), y el proyecto quiere la version actual. `engine_id` sigue
+sin hardcodearse: se lee del `id name` que devuelve el binario, sea cual sea la version fijada en
+el workflow.
 
 Si alguna vez se quiere correr el analizador en un computador propio, se instala con
-`brew install stockfish` (macOS) o `sudo apt install stockfish` (Linux) y se usa `pnpm analyze`
-con un `.env.local` completo.
+`brew install stockfish` (macOS, casi siempre trae una version mas nueva que la de Ubuntu) o
+bajando el binario de Linux de la misma forma que el workflow, y se usa `pnpm analyze` con un
+`.env.local` completo.
 
 ## Paso manual que no se puede automatizar
 

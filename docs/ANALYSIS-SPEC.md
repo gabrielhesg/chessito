@@ -15,9 +15,9 @@ el binario como proceso hijo y se le escriben comandos de texto.
 
 ## Dónde corre
 
-**En GitHub Actions**, con un workflow programado que instala Stockfish nativo con `apt` y corre
-el analizador contra Supabase. Gratis, sin computador propio encendido, y disparable a mano desde
-el celular.
+**En GitHub Actions**, con un workflow programado que baja el binario oficial de Stockfish desde
+sus releases de GitHub y corre el analizador contra Supabase. Gratis, sin computador propio
+encendido, y disparable a mano desde el celular.
 
 El mismo script corre igual en un computador con `pnpm analyze` si algún día quieres que sea más
 rápido. La única diferencia es dónde se ejecuta y de dónde salen las credenciales.
@@ -98,9 +98,11 @@ no debería estar estudiando.
 
 `ENGINE_ID` no se hardcodea: se construye al arrancar leyendo el `id name` que devuelve el motor
 al comando `uci`, concatenado con el presupuesto y el número de hilos. Por ejemplo
-`sf16-800k-t7`. El `apt install stockfish` de Debian estable trae una versión bastante más vieja
-que el `brew` de macOS, y hay que poder distinguirlas. Al cambiar de motor o de presupuesto las
-evaluaciones dejan de ser comparables: se re encolan selectivamente en vez de mezclar dos
+`stockfish-19-800k-t3`. El workflow baja el binario oficial de los releases de GitHub en vez de
+`apt install stockfish` (el paquete de Debian/Ubuntu queda congelado en versiones bastante más
+viejas), pero da igual de dónde salga: si algún día cambia la fuente del binario, lo único que
+importa es que `id name` siga reflejando la versión real. Al cambiar de motor o de presupuesto
+las evaluaciones dejan de ser comparables: se re encolan selectivamente en vez de mezclar dos
 motores en la misma tabla.
 
 ## Una evaluación por posición, no dos
@@ -299,8 +301,8 @@ No se expone ninguna ruta HTTP de análisis.
 
 - Se dispara por `schedule` (una vez al día) y por `workflow_dispatch`, que es el botón "Run
   workflow" que permite lanzarlo a mano desde el celular con la app de GitHub.
-- Instala Stockfish con `sudo apt-get install -y stockfish`. El binario queda en
-  `/usr/games/stockfish`.
+- Baja el binario oficial de Stockfish (`stockfish-linux-x86-64-universal.tar.gz`) del release
+  fijado en `official-stockfish/Stockfish` y lo deja ejecutable en el workspace del runner.
 - Define `ENGINE_THREADS` según `nproc`, menos uno.
 - Corre `pnpm analyze` con un tope de lote configurable por input del `workflow_dispatch`, para
   poder hacer el backfill en tandas sin chocar con el límite de 6 horas por job.
