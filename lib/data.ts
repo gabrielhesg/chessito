@@ -120,6 +120,42 @@ export async function analysisCoverage(): Promise<AnalysisCoverage[]> {
   return data ?? [];
 }
 
+export type ErrorsDiagnostic = {
+  conClasificacion: number;
+  mias: number;
+  miasNoLibro: number;
+  miasNoLibroNoDecidida: number;
+};
+
+/**
+ * Se usa solo cuando /errores tiene partidas analizadas pero las tablas salen vacias: en vez
+ * de pedir que alguien corra una consulta a mano en Supabase, la app se responde sola con el
+ * mismo desglose (docs/ANALYSIS-SPEC.md no dice cual de is_mine/is_book/is_decided se comio
+ * las filas, esto lo aisla sin adivinar).
+ */
+export async function errorsDiagnostic(): Promise<ErrorsDiagnostic> {
+  const client = supabaseAdmin();
+  const base = () => client.from('moves').select('game_id', { count: 'exact', head: true }).not('classification', 'is', null);
+
+  const [conClasificacion, mias, miasNoLibro, miasNoLibroNoDecidida] = await Promise.all([
+    base(),
+    base().eq('is_mine', true),
+    base().eq('is_mine', true).eq('is_book', false),
+    base().eq('is_mine', true).eq('is_book', false).eq('is_decided', false),
+  ]);
+
+  for (const res of [conClasificacion, mias, miasNoLibro, miasNoLibroNoDecidida]) {
+    if (res.error) fail('moves (diagnostico de errores)', res.error.message);
+  }
+
+  return {
+    conClasificacion: conClasificacion.count ?? 0,
+    mias: mias.count ?? 0,
+    miasNoLibro: miasNoLibro.count ?? 0,
+    miasNoLibroNoDecidida: miasNoLibroNoDecidida.count ?? 0,
+  };
+}
+
 /** Tiempo gastado por numero de jugada. Solo hasta el ply 60: mas alla la muestra es minuscula. */
 export async function moveTimeByPly(): Promise<MoveTimeByPly[]> {
   const { data, error } = await supabaseAdmin()
