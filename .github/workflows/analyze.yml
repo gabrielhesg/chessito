@@ -49,7 +49,14 @@ jobs:
         if: steps.secretos.outputs.listos == 'true'
       - name: Instalar Stockfish
         if: steps.secretos.outputs.listos == 'true'
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq stockfish
+        # El stockfish de apt en ubuntu-latest (24.04) esta congelado en 16-1build1. El binario
+        # oficial se baja directo del release de GitHub para tener la version actual.
+        run: |
+          curl -fsSL -o stockfish.tar.gz \
+            https://github.com/official-stockfish/Stockfish/releases/download/sf_19/stockfish-linux-x86-64-universal.tar.gz
+          tar -xzf stockfish.tar.gz
+          chmod +x stockfish/stockfish-linux-x86-64-universal
+          echo "STOCKFISH_PATH=$PWD/stockfish/stockfish-linux-x86-64-universal" >> "$GITHUB_ENV"
       - name: Calcular hilos disponibles
         id: hilos
         if: steps.secretos.outputs.listos == 'true'
@@ -65,7 +72,6 @@ jobs:
           OWNER_EMAIL: ${{ secrets.OWNER_EMAIL }}
           CRON_SECRET: no-aplica-en-actions
           APP_ENV: prod
-          STOCKFISH_PATH: /usr/games/stockfish
           ENGINE_NODES: '800000'
           ENGINE_THREADS: ${{ steps.hilos.outputs.threads }}
         run: pnpm analyze --batch ${{ inputs.batch || '500' }}
