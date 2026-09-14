@@ -19,7 +19,8 @@ export type MoveAnalysisUpdate = {
   ply: number;
   evalCp: number;
   mateIn: number | null;
-  bestUci: string;
+  /** null cuando la posicion resultante no tiene jugadas legales (jaque mate o ahogado). */
+  bestUci: string | null;
   cpLoss: number;
   winPctLoss: number;
   classification: Classification;

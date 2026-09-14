@@ -28,7 +28,8 @@ export type AnalysisEngine = {
   evaluate(uciMoves: readonly string[], nodes: number): Promise<{
     scoreCp: number | null;
     mateIn: number | null;
-    bestUci: string;
+    /** null cuando la posicion no tiene jugadas legales (jaque mate o ahogado). */
+    bestUci: string | null;
   }>;
 };
 
@@ -71,7 +72,7 @@ async function evaluatePosition(
   engine: AnalysisEngine,
   uciMoves: readonly string[],
   nodes: number,
-): Promise<{ evalWhiteCp: number; mateInWhite: number | null; bestUci: string }> {
+): Promise<{ evalWhiteCp: number; mateInWhite: number | null; bestUci: string | null }> {
   const result = await engine.evaluate(uciMoves, nodes);
   const sideToMove = sideToMoveAfterPlies(uciMoves.length);
   const rawCp = result.mateIn !== null ? mateToCp(result.mateIn) : (result.scoreCp ?? 0);

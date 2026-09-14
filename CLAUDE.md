@@ -184,6 +184,25 @@ exactas y el código sigue lo medido, no lo escrito:
 - El resto del histórico es 100% `rules: 'chess'`. Todavía no hay una sola variante, así que el
   camino de variantes está escrito pero nunca se ejerció con datos de verdad.
 
+### 6. `bestmove (none)` en posiciones de jaque mate
+
+Cuando la última jugada de una partida es jaque mate (o ahogado, aunque eso ya no tiene una
+jugada "siguiente" que perder), la posición resultante no tiene jugadas legales y Stockfish
+responde `bestmove (none)` en vez de una jugada UCI. `(none)` son 6 caracteres: no cabe en
+`moves.best_uci varchar(5)`, y sin manejarlo el `insert`/`update` de esa fila falla entero.
+
+Descubierto en producción, no en tests: 89 de 500 partidas fallaron en el primer backfill con
+Stockfish 19 (`value too long for type character varying(5)`), todas por este motivo — ninguno
+de los fixtures de los tests trae una partida que termine en mate analizada hasta el último ply.
+`UciEngine.evaluate()` normaliza `"(none)"` a `null` (`EvalResult.bestUci: string | null`), y
+`moves.best_uci` ya era nullable de por sí, así que no hizo falta ninguna migración: la posición
+queda con `best_uci = null`, coherente con "no hay jugada mejor porque no hay jugada posible".
+`lib/puzzles/run.ts` lo trata distinto a propósito: si el motor devuelve `(none)` para la
+posición ANTES del blunder de Gabriel (que por definición tenía una jugada legal, la que jugó),
+eso es un candidato corrupto, no un caso válido — se descarta como falla del candidato (mismo
+mecanismo que cualquier otro error de `runBuildPuzzles`, no hay estado de partida que tocar), no
+se guarda con `best_uci = null` como si fuera legítimo.
+
 ## Estado al terminar la Fase 1
 
 La app está construida y verificada de punta a punta contra el histórico real (9.650 partidas,

@@ -15,7 +15,7 @@ export type MultiPvEngine = {
     uciMoves: readonly string[],
     nodes: number,
     lines: number,
-  ): Promise<Array<{ scoreCp: number | null; mateIn: number | null; bestUci: string }>>;
+  ): Promise<Array<{ scoreCp: number | null; mateIn: number | null; bestUci: string | null }>>;
 };
 
 export type BuildPuzzlesOptions = {
@@ -78,6 +78,9 @@ export async function runBuildPuzzles(options: BuildPuzzlesOptions): Promise<Bui
           const lines = await engine.evaluateMultiPv(uciPrefix, nodes, 2);
           const best = lines[0];
           if (!best) throw new Error('El motor no devolvio ninguna linea legal en la posicion candidata');
+          // La posicion candidata es ANTES del blunder de Gabriel: siempre tenia una jugada legal
+          // (la que jugo, aunque mala), asi que "(none)" aca es un candidato corrupto, no un caso valido.
+          if (best.bestUci === null) throw new Error('El motor devolvio "(none)" en una posicion con jugadas legales');
 
           const second = lines[1];
           const isUnique =
