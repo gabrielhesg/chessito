@@ -275,8 +275,13 @@ cuántas piezas (sin peones ni reyes) le quedan a cada bando para decidir el fin
 vuelve a reproducir el PGN: `parsePgn` ya cuenta el tablero después de cada jugada (con
 `chess.board()`) y lo deja en `ParsedMove.piecesAfter`, igual que ya hacía con el EPD.
 
-**`IngestStore` se extendió, no se creó un store nuevo.** `moves:extract` no tiene un
-disparador serverless (no hay ruta ni cron de Vercel para esto en la Fase 2), pero igual reusa
+**`IngestStore` se extendió, no se creó un store nuevo.** `moves:extract` no tiene ruta ni cron
+de Vercel, pero sí tiene workflow de GitHub Actions (`.github/workflows/moves.yml`, agregado
+recién al descubrir en producción que nadie lo disparaba: el backfill completo de `ingest`
+dejó miles de partidas con PGN pero sin `moves`, y el analizador de la Fase 3 las marcaba
+`analysis_state = 'done'` sin haber analizado una sola jugada, porque no había nada que
+analizar). Desde ahora `ingest.yml` corre `moves:extract` como paso final de cada ingesta, así
+que las partidas nuevas nunca vuelven a quedar atascadas ahí. `moves:extract` igual reusa
 la misma interfaz de dos transportes que `pnpm ingest` y `pnpm openings:load`: la regla del
 proyecto es una interfaz con las dos implementaciones, no una por operación. Lo único nuevo del
 lado de PostgREST es la vista `v_games_pending_moves` (con `security_invoker`, sin grants para

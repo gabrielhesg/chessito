@@ -54,3 +54,19 @@ jobs:
           CRON_SECRET: no-aplica-en-actions
           APP_ENV: ${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
         run: pnpm ingest ${{ (inputs.alcance == 'full') && '--full' || '' }}
+      - name: Extraer jugadas de lo recien ingerido
+        if: steps.secretos.outputs.listos == 'true'
+        # Sin este paso, las partidas nuevas quedan con PGN pero sin filas en `moves` hasta
+        # que alguien dispare el workflow `moves` a mano — exactamente lo que le paso al
+        # backfill completo la primera vez. Correrlo aca cierra el circulo: cada ingesta deja
+        # las partidas nuevas listas para el analizador.
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          CHESSCOM_USERNAME: ${{ secrets.CHESSCOM_USERNAME }}
+          OWNER_EMAIL: ${{ secrets.OWNER_EMAIL }}
+          CRON_SECRET: no-aplica-en-actions
+          APP_ENV: ${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
+        run: pnpm moves:extract

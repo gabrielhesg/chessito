@@ -1,0 +1,35 @@
+name: moves
+
+# Puebla `moves` desde el PGN de cada partida que todavia no tiene sus jugadas guardadas
+# (Fase 2). No tiene un disparador serverless (ver CLAUDE.md, "Estado al terminar la Fase 2"):
+# hasta ahora se corria a mano con `pnpm moves:extract` en un entorno local, pero la app se
+# opera desde el navegador, asi que hace falta poder dispararla igual que `openings`.
+#
+# Idempotente: `loadGamesForMoves` solo devuelve partidas sin filas en `moves`, asi que
+# correrla de nuevo no encuentra nada pendiente y no hace dano.
+on:
+  workflow_dispatch:
+
+jobs:
+  extraer:
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'development' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Extraer jugadas
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          CHESSCOM_USERNAME: ${{ secrets.CHESSCOM_USERNAME }}
+          OWNER_EMAIL: ${{ secrets.OWNER_EMAIL }}
+          CRON_SECRET: no-aplica-en-actions
+          APP_ENV: ${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
+        run: pnpm moves:extract
