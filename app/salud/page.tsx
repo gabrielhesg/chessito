@@ -1,4 +1,7 @@
+import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import { dataQuality, gamesByMonth, healthJobs, healthSummary, lastJobRuns, ultimaReconciliacion } from '@/lib/data';
+import { dispatchWorkflow } from '@/lib/github';
 import { Panel, Semaforo, Tabla, Vacio } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
@@ -7,7 +10,12 @@ export const dynamic = 'force-dynamic';
  * La pantalla que permite confiar en el resto sin abrir la consola (docs/CONFIANZA.md).
  * Sin ella, todo lo demas son numeros que hay que creer a ciegas.
  */
-export default async function SaludPage() {
+export default async function SaludPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ analisis?: string; error?: string }>;
+}) {
+  const params = await searchParams;
   const [chequeos, jobs, resumen, corridas, meses, reconciliacion] = await Promise.all([
     dataQuality(),
     healthJobs(),
@@ -22,6 +30,21 @@ export default async function SaludPage() {
   const vieja = horas === null || horas > 48;
   const fallando = chequeos.filter((c) => c.ok === false);
 
+  // El boton "Analizar ahora": el analisis con Stockfish no puede correr en Vercel (necesita
+  // un binario nativo y minutos, no segundos), asi que en vez de correrlo aca se dispara el
+  // workflow analyze.yml de GitHub Actions, para que Gabriel no tenga que entrar a GitHub.
+  async function analizarAhora(): Promise<void> {
+    'use server';
+    try {
+      await dispatchWorkflow('analyze.yml', { batch: '200' });
+    } catch (error) {
+      const mensaje = error instanceof Error ? error.message : String(error);
+      redirect(`/salud?error=${encodeURIComponent(mensaje)}`);
+    }
+    revalidatePath('/salud');
+    redirect('/salud?analisis=disparado');
+  }
+
   return (
     <div className="space-y-6">
       <header>
@@ -30,6 +53,18 @@ export default async function SaludPage() {
           Estado de la ingesta, calidad de los datos y ultimas corridas.
         </p>
       </header>
+
+      {params.analisis === 'disparado' ? (
+        <p className="rounded border border-[var(--color-bien)] px-3 py-2 text-sm text-[var(--color-bien)]">
+          Se disparo el workflow de analisis en GitHub Actions. Va a tardar unos minutos en
+          aparecer acá abajo, en &quot;Ultimas corridas&quot;.
+        </p>
+      ) : null}
+      {params.error ? (
+        <p className="rounded border border-[var(--color-mal)] px-3 py-2 text-sm text-[var(--color-mal)]">
+          {params.error}
+        </p>
+      ) : null}
 
       <div
         className={`rounded-lg border px-4 py-3 text-sm ${
@@ -185,7 +220,18 @@ export default async function SaludPage() {
               Pendientes de analizar: <strong className="tabular-nums">{resumen?.n_pending ?? 0}</strong>
             </li>
           </ul>
-
+          <form action={analizarAhora} className="mt-3">
+            <button
+              type="submit"
+              className="rounded bg-[var(--color-texto)] px-3 py-1.5 text-sm font-medium text-[var(--color-fondo)]"
+            >
+              Analizar ahora
+            </button>
+            <p className="mt-1 text-xs text-[var(--color-tenue)]">
+              Dispara el workflow de GitHub Actions (lote de 200 partidas). Corre aparte, en
+              GitHub, no en Vercel: tarda minutos, no segundos.
+            </p>
+          </form>
         </Panel>
       </div>
     </div>

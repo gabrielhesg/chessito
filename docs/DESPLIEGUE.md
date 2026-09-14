@@ -108,6 +108,14 @@ Solo la necesitan los scripts batch y GitHub Actions.
 
 Para generar un `CRON_SECRET`: `openssl rand -hex 32`.
 
+**`GITHUB_TOKEN` (opcional).** Solo hace falta si quieres el botón "Analizar ahora" de
+`/salud`, que dispara el workflow `analyze.yml` sin entrar a GitHub. Se genera en
+**github.com → tu foto de perfil → Settings → Developer settings → Personal access tokens →
+Fine-grained tokens → Generate new token**, con acceso restringido al repo `gabrielhesg/chessito`
+y el permiso **Actions: Read and write** (ningún otro permiso hace falta). El mismo token sirve
+para Production y para Preview/Development, una sola vez, no hay versión "de prueba" separada.
+Sin este secreto la app funciona igual, solo que ese botón falla con un mensaje claro.
+
 Con el cron de Vercel no hay que hacer nada mas: Vercel manda el `Authorization: Bearer` con el
 valor de `CRON_SECRET` automaticamente. El horario esta en `vercel.json` (09:00 UTC, todos los
 dias).
