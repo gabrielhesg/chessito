@@ -1,10 +1,17 @@
 import { analysisCoverage, errorsByMoveTime, errorsByPhase, errorsDiagnostic } from '@/lib/data';
-import { Muestra, Panel, Tabla, Vacio, filaAtenuada, pct } from '@/components/ui';
+import { Ayuda, Panel, Tabla, Vacio, filaAtenuada, pct } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 
 const NOMBRE_FASE: Record<number, string> = { 0: 'Apertura', 1: 'Medio juego', 2: 'Final' };
 const ORDEN_BUCKET = ['<3s', '3-10s', '10-30s', '>30s'] as const;
+
+const AYUDA_JUGADAS = (
+  <Ayuda>
+    Número de jugadas en este corte. Bajo 20 la fila sale atenuada: con pocas jugadas la tasa de
+    error puede ser casualidad, no un patrón real.
+  </Ayuda>
+);
 
 /** Pregunta 3 (blunders reales) y el cierre de la pregunta 4 (tiempo vs errores). */
 export default async function ErroresPage() {
@@ -71,14 +78,23 @@ export default async function ErroresPage() {
               return (
                 <div key={clase}>
                   <h3 className="mb-1 text-xs uppercase tracking-wide text-[var(--color-tenue)]">{clase}</h3>
-                  <Tabla headers={['Fase', 'Jugadas', 'Graves', 'Errores', 'Imprecisiones', 'CP perdidos prom.']}>
+                  <Tabla
+                    headers={[
+                      'Fase',
+                      <span key="j" className="inline-flex items-center">Jugadas{AYUDA_JUGADAS}</span>,
+                      'Graves',
+                      'Errores',
+                      'Imprecisiones',
+                      'CP perdidos prom.',
+                    ]}
+                  >
                     {filas.map((f) => {
                       const n = f.n_moves ?? 0;
                       const fase = f.phase ?? 0;
                       return (
                         <tr key={fase} className={`border-b border-[var(--color-borde)]/50 ${filaAtenuada(n)}`}>
                           <td className="py-1.5 pr-3">{NOMBRE_FASE[fase] ?? fase}</td>
-                          <td className="py-1.5 pr-3 tabular-nums"><Muestra n={n} /></td>
+                          <td className="py-1.5 pr-3 tabular-nums">{n}</td>
                           <td className="py-1.5 pr-3 tabular-nums">{f.blunders ?? 0}</td>
                           <td className="py-1.5 pr-3 tabular-nums">{f.mistakes ?? 0}</td>
                           <td className="py-1.5 pr-3 tabular-nums">{f.inaccuracies ?? 0}</td>
@@ -108,14 +124,21 @@ export default async function ErroresPage() {
               return (
                 <div key={clase}>
                   <h3 className="mb-1 text-xs uppercase tracking-wide text-[var(--color-tenue)]">{clase}</h3>
-                  <Tabla headers={['Rango', 'Jugadas', 'Tasa de error', 'CP perdidos prom.']}>
+                  <Tabla
+                    headers={[
+                      'Rango',
+                      <span key="j" className="inline-flex items-center">Jugadas{AYUDA_JUGADAS}</span>,
+                      'Tasa de error',
+                      'CP perdidos prom.',
+                    ]}
+                  >
                     {ORDEN_BUCKET.map((bucket) => {
                       const fila = filas.find((f) => f.time_bucket === bucket);
                       const n = fila?.n_moves ?? 0;
                       return (
                         <tr key={bucket} className={`border-b border-[var(--color-borde)]/50 ${filaAtenuada(n)}`}>
                           <td className="py-1.5 pr-3">{bucket}</td>
-                          <td className="py-1.5 pr-3 tabular-nums"><Muestra n={n} /></td>
+                          <td className="py-1.5 pr-3 tabular-nums">{n}</td>
                           <td className="py-1.5 pr-3 tabular-nums">{pct(fila?.error_rate)}</td>
                           <td className="py-1.5 pr-3 tabular-nums">{fila?.avg_cp_loss?.toFixed(0) ?? '—'}</td>
                         </tr>

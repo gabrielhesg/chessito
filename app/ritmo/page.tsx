@@ -1,7 +1,15 @@
 import { afterResult, byHour, bySessionIndex } from '@/lib/data';
-import { Muestra, Panel, Tabla, Vacio, filaAtenuada, pct } from '@/components/ui';
+import { Ayuda, Panel, Rendimiento, Tabla, Vacio, filaAtenuada } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
+
+const AYUDA_RENDIMIENTO = (
+  <Ayuda>
+    El número grande es la cota inferior de Wilson: corrige a la baja el porcentaje bruto cuando
+    la muestra es chica, para que no parezca mejor o peor de lo que es por casualidad. Debajo, el
+    porcentaje bruto y n (número de partidas de este corte).
+  </Ayuda>
+);
 
 /** Pregunta 2: tilt y fatiga. Hora local de Santiago, numero de partida en la sesion, y que
  * pasa despues de una derrota. Las vistas ya vienen en `America/Santiago`. */
@@ -24,16 +32,14 @@ export default async function RitmoPage() {
         {horas.length === 0 ? (
           <Vacio>Sin datos todavia.</Vacio>
         ) : (
-          <Tabla headers={['Hora', 'Tipo', 'n', 'Rendimiento', 'Wilson']}>
+          <Tabla headers={['Hora', 'Tipo', <span key="r" className="inline-flex items-center">Rendimiento{AYUDA_RENDIMIENTO}</span>]}>
             {horas.map((h) => {
               const n = h.n ?? 0;
               return (
                 <tr key={`${h.time_class}-${h.hour_local}`} className={`border-b border-[var(--color-borde)]/50 ${filaAtenuada(n)}`}>
                   <td className="py-1.5 pr-3 tabular-nums">{String(h.hour_local).padStart(2, '0')}:00</td>
                   <td className="py-1.5 pr-3">{h.time_class}</td>
-                  <td className="py-1.5 pr-3 tabular-nums"><Muestra n={n} /></td>
-                  <td className="py-1.5 pr-3 tabular-nums">{pct(h.score_pct)}</td>
-                  <td className="py-1.5 pr-3 tabular-nums">{pct(h.score_pct_lower)}</td>
+                  <td className="py-1.5 pr-3"><Rendimiento pctValue={h.score_pct} wilson={h.score_pct_lower} n={n} /></td>
                 </tr>
               );
             })}
@@ -45,7 +51,7 @@ export default async function RitmoPage() {
         {sesion.length === 0 ? (
           <Vacio>Sin datos todavia.</Vacio>
         ) : (
-          <Tabla headers={['Partida de la sesion', 'Tipo', 'n', 'Rendimiento', 'Wilson']}>
+          <Tabla headers={['Partida de la sesion', 'Tipo', <span key="r" className="inline-flex items-center">Rendimiento{AYUDA_RENDIMIENTO}</span>]}>
             {sesion.map((s) => {
               const n = s.n ?? 0;
               return (
@@ -54,9 +60,7 @@ export default async function RitmoPage() {
                     {s.game_index_capped === 6 ? '6 o mas' : s.game_index_capped}
                   </td>
                   <td className="py-1.5 pr-3">{s.time_class}</td>
-                  <td className="py-1.5 pr-3 tabular-nums"><Muestra n={n} /></td>
-                  <td className="py-1.5 pr-3 tabular-nums">{pct(s.score_pct)}</td>
-                  <td className="py-1.5 pr-3 tabular-nums">{pct(s.score_pct_lower)}</td>
+                  <td className="py-1.5 pr-3"><Rendimiento pctValue={s.score_pct} wilson={s.score_pct_lower} n={n} /></td>
                 </tr>
               );
             })}
@@ -75,7 +79,7 @@ export default async function RitmoPage() {
               return (
                 <div key={clase}>
                   <h3 className="mb-1 text-xs uppercase tracking-wide text-[var(--color-tenue)]">{clase}</h3>
-                  <Tabla headers={['Partida anterior', 'n', 'Rendimiento', 'Wilson']}>
+                  <Tabla headers={['Partida anterior', <span key="r" className="inline-flex items-center">Rendimiento{AYUDA_RENDIMIENTO}</span>]}>
                     {filas.map((d) => {
                       const n = d.n ?? 0;
                       return (
@@ -83,9 +87,7 @@ export default async function RitmoPage() {
                           <td className="py-1.5 pr-3">
                             {d.prev_result === 'win' ? 'ganada' : d.prev_result === 'loss' ? 'perdida' : 'tablas'}
                           </td>
-                          <td className="py-1.5 pr-3 tabular-nums"><Muestra n={n} /></td>
-                          <td className="py-1.5 pr-3 tabular-nums">{pct(d.score_pct)}</td>
-                          <td className="py-1.5 pr-3 tabular-nums">{pct(d.score_pct_lower)}</td>
+                          <td className="py-1.5 pr-3"><Rendimiento pctValue={d.score_pct} wilson={d.score_pct_lower} n={n} /></td>
                         </tr>
                       );
                     })}

@@ -54,3 +54,22 @@ export function parseTimeControl(raw: string): TimeControl {
 
   throw new Error(`time_control no reconocido: "${raw}"`);
 }
+
+/**
+ * Notacion legible para la UI, la que todo jugador ya reconoce de chess.com/lichess
+ * ("2+1", "10 min"), no el crudo en segundos que devuelve la API ("120+1", "600").
+ * `raw === '-'` y `raw` con forma `1/N` comparten `isCorrespondence`, pero no deben leerse
+ * igual (trampa 5 de CLAUDE.md: el primero es "Play vs Coach", el segundo correspondencia real).
+ */
+export function formatTimeControl(raw: string): string {
+  const parsed = parseTimeControl(raw);
+
+  if (parsed.isCorrespondence) {
+    return raw.trim() === '-' ? 'vs coach' : 'correspondencia';
+  }
+
+  const minutos = parsed.baseSeconds / 60;
+  const base = Number.isInteger(minutos) ? `${minutos}` : `${(parsed.baseSeconds / 60).toFixed(1)}`;
+  const baseLabel = parsed.incrementSecs > 0 ? `${base}+${parsed.incrementSecs}` : `${base} min`;
+  return baseLabel;
+}
