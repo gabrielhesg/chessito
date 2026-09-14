@@ -176,14 +176,20 @@ export default async function RegistroPage({
                   {g.opening_id ? (nombres.get(g.opening_id) ?? 'Sin resolver') : 'Sin resolver'}
                 </Td>
                 <Td>
-                  <a
-                    className="whitespace-nowrap text-xs text-tenue hover:text-texto hover:underline"
-                    href={g.url}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    chess.com ↗
-                  </a>
+                  <span className="flex items-center gap-2 whitespace-nowrap">
+                    <Link href={`/partida/${g.id}`} className="text-xs font-medium text-acento hover:underline">
+                      Analizar
+                    </Link>
+                    <a
+                      className="text-xs text-apagado hover:text-texto"
+                      href={g.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="Abrir en chess.com"
+                    >
+                      ↗
+                    </a>
+                  </span>
                 </Td>
               </Fila>
             ))}

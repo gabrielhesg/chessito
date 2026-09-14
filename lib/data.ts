@@ -375,3 +375,26 @@ export async function ultimaReconciliacion(): Promise<Reconciliacion | null> {
     meses: crudo.filter(esMesReconciliado),
   };
 }
+
+export type Move = Database['public']['Tables']['moves']['Row'];
+
+export type GameDetail = { game: Game; moves: Move[] };
+
+/**
+ * Una partida con todas sus jugadas, para /partida/[id].
+ *
+ * NO devuelve un FEN por ply: el esquema no los guarda a proposito (nota en 0001_init.sql) y la
+ * pagina los re-deriva en el cliente reproduciendo `games.pgn` con chess.js. Guardar 60 FEN por
+ * partida x 10.000 partidas para algo que el navegador calcula en milisegundos no vale la pena.
+ */
+export async function gameDetail(id: number): Promise<GameDetail | null> {
+  const client = supabaseAdmin();
+  const [partida, jugadas] = await Promise.all([
+    client.from('games').select('*').eq('id', id).maybeSingle(),
+    client.from('moves').select('*').eq('game_id', id).order('ply'),
+  ]);
+  if (partida.error) fail('games', partida.error.message);
+  if (jugadas.error) fail('moves', jugadas.error.message);
+  if (!partida.data) return null;
+  return { game: partida.data, moves: jugadas.data ?? [] };
+}
