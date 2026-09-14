@@ -379,13 +379,66 @@ concepto de "development" para el análisis: el spec es explícito en que solo m
 producción, así que el job entero tiene `if: github.ref == 'refs/heads/main'` y
 `environment: production` fijo, sin la rama ternaria que sí tiene `ingest.yml`.
 
-**Lo que la Fase 4 necesita saber.** `puzzles` y `puzzle_attempts` siguen vacías. El respaldo
-NDJSON (`scripts/backup-ndjson.ts`) ya vuelca `puzzle_attempts` aunque esté vacía, así que Fase
-4 no tiene que tocar ese script, solo empezar a llenar la tabla. El filtro `MultiPV = 2` para
-descartar ejercicios ambiguos (spec, sección "Fase 4: filtro de calidad de los ejercicios") no
-está implementado: `UciEngine` hoy solo pide la mejor línea, no una segunda. `docs/validacion-lichess.md`
-queda con la plantilla lista pero sin completar — es un ritual manual de Gabriel, no algo que
-se automatice.
+## Estado al terminar la Fase 4
+
+El entrenador ya sirve ejercicios. Sin migración nueva: `puzzles`, `puzzle_attempts` y el
+`job_kind = 'puzzles'` ya existían desde `0001_init.sql`, sin poblar.
+
+| Pieza | Dónde |
+|---|---|
+| `UciEngine.evaluateMultiPv`, filtro de calidad | `lib/engine/uci.ts` |
+| Detección de patrón del blunder, pura y testeada | `lib/chess/theme.ts` (`inferTheme`) |
+| Repetición espaciada SM-2 simplificada, pura | `lib/spaced-repetition/sm2.ts` (`nextReview`) |
+| Acceso a datos del constructor (un solo transporte) | `lib/puzzles/store.ts` |
+| La única función de construcción | `lib/puzzles/run.ts` (`runBuildPuzzles`) |
+| Escritura interactiva (repetición espaciada) | `lib/spaced-repetition/actions.ts` (`recordAttempt`) |
+| Página, y primer componente cliente de la app | `app/entrenador/page.tsx`, `components/TrainerBoard.tsx` |
+| Workflow | `.github/workflows/puzzles.yml` (cron diario después de `analyze` + `workflow_dispatch`) |
+
+**`lib/puzzles/store.ts` tampoco tiene dos transportes, mismo criterio que `lib/analysis/store.ts`.**
+`build-puzzles.ts` solo corre en GitHub Actions/local, nunca desde Vercel: no hay un segundo
+camino que justifique la interfaz dual.
+
+**El `best_uci` de cada ejercicio se recalcula fresco con MultiPV, no se reusa `moves.best_uci`.**
+Un solo `evaluateMultiPv` en la posición antes del blunder da a la vez la mejor jugada y la
+segunda mejor, en el mismo presupuesto de nodos, sin depender de con qué versión de Stockfish se
+escribió `moves.best_uci` originalmente (podría ser una corrida vieja con el motor 16, y el
+ejercicio se construye con el 19). `cp_loss`/`win_pct_loss` sí se copian de `moves`: esos ya
+están bien calculados con los dos pasos de signo de la Fase 3.
+
+**`is_unique` compara las dos líneas de MultiPV directamente, sin los dos pasos de signo.**
+Ambas líneas comparten la misma posición y el mismo lado al mover, así que alcanza con
+`winPct(línea1.cp) − winPct(línea2.cp)`. El paso 1/2 de signo (`lib/analysis/signs.ts`) es para
+comparar ANTES/DESPUÉS de una jugada, no dos alternativas en la misma posición.
+
+**`theme` cubre 3 de los 4 patrones sugeridos, no los 4.** `lib/chess/theme.ts` detecta
+`pieza_colgada`, `mate_pasillo` y `permite_horquilla`, estructuralmente sobre el tablero después
+del blunder (sin volver a llamar al motor por la respuesta real del rival). `clavada` (pin)
+queda **sin implementar a propósito**: `chess.js` no expone si una pieza está clavada, y un
+detector confiable sin volver a llamar a Stockfish no valía el tiempo para un heurístico
+opcional — el propio prompt de la fase pide "etiquetar cuando se pueda inferir", no los cuatro.
+Un ejercicio sin `theme` se sigue sirviendo igual, solo que no aparece agrupado por patrón.
+
+**`/entrenador` es la primera página con un componente cliente.** Confirmado antes de escribir
+código: el resto de la app es 100% Server Components. `TrainerBoard.tsx` necesita interacción
+(arrastrar una pieza, validar contra `chess.js`) que un Server Component no puede resolver.
+`react-chessboard` se fijó en `5.12.1` (requiere React 19, que el proyecto ya usa), mismo
+criterio de versión exacta que `chess.js`.
+
+**`recordAttempt` es la primera escritura interactiva de la app, y usa `supabaseAdmin()`, no
+Postgres directo.** A diferencia de `build-puzzles.ts` (batch, en Actions), esta acción corre en
+Vercel: aplica la regla de siempre, PostgREST con la service role key, no una conexión directa.
+Lee el estado SM-2 actual de la fila, llama a `nextReview` (puro), y actualiza `puzzles` más un
+insert en `puzzle_attempts` en dos llamadas — no hay `transaction()` vía PostgREST; si una de
+las dos falla se loguea, no es tan crítico como sí lo es `saveAnalysis` del analizador.
+
+**El respaldo NDJSON no cambió.** `scripts/backup-ndjson.ts` ya volcaba `puzzle_attempts` desde
+la Fase 3 (aunque estuviera vacía), así que la Fase 4 no tuvo que tocar ese script.
+
+**Lo que NO está hecho y no es un olvido.** `clavada` como theme (ver arriba). `docs/validacion-lichess.md`
+sigue con la plantilla lista pero sin completar — es un ritual manual de Gabriel, no algo que se
+automatice. El backfill real contra producción (`puzzles:build`) no se corrió como parte de esta
+fase: se dispara después de mergear, igual que se hizo con `moves` y `analyze`.
 
 ## Convenciones
 

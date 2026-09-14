@@ -112,6 +112,57 @@ describe('UciEngine', () => {
     expect(engine.buildEngineId({ nodes: 800000, threads: 7 })).toBe('stockfish-16-1-800k-t7');
   });
 
+  it('evaluateMultiPv() manda MultiPV=N y separa las lineas por rango, restaurando MultiPV=1 al final', async () => {
+    const { engine, process } = startedEngine();
+    process.emit('uciok');
+    await engine.start();
+
+    const evalPromise = engine.evaluateMultiPv(['e2e4'], 800000, 2);
+    process.emit('info depth 10 multipv 1 score cp 40 pv e7e5 g1f3');
+    process.emit('info depth 10 multipv 2 score cp 35 pv c7c5 g1f3');
+    process.emit('info depth 18 multipv 1 score cp 44 pv e7e5 g1f3 b8c6');
+    process.emit('info depth 18 multipv 2 score cp 30 pv c7c5 g1f3 d7d6');
+    process.emit('bestmove e7e5 ponder g1f3');
+    const result = await evalPromise;
+
+    expect(process.written).toContain('setoption name MultiPV value 2\n');
+    expect(result).toEqual([
+      { scoreCp: 44, mateIn: null, bestUci: 'e7e5' },
+      { scoreCp: 30, mateIn: null, bestUci: 'c7c5' },
+    ]);
+    expect(process.written).toContain('setoption name MultiPV value 1\n');
+  });
+
+  it('evaluateMultiPv() reconoce mate en cualquier linea', async () => {
+    const { engine, process } = startedEngine();
+    process.emit('uciok');
+    await engine.start();
+
+    const evalPromise = engine.evaluateMultiPv(['e2e4'], 800000, 2);
+    process.emit('info depth 10 multipv 1 score mate 2 pv d1h5 g7g6');
+    process.emit('info depth 10 multipv 2 score cp -50 pv b8c6');
+    process.emit('bestmove d1h5');
+    const result = await evalPromise;
+
+    expect(result).toEqual([
+      { scoreCp: null, mateIn: 2, bestUci: 'd1h5' },
+      { scoreCp: -50, mateIn: null, bestUci: 'b8c6' },
+    ]);
+  });
+
+  it('evaluateMultiPv() con una sola linea legal devuelve un solo elemento', async () => {
+    const { engine, process } = startedEngine();
+    process.emit('uciok');
+    await engine.start();
+
+    const evalPromise = engine.evaluateMultiPv([], 800000, 2);
+    process.emit('info depth 10 multipv 1 score cp 20 pv e2e4');
+    process.emit('bestmove e2e4');
+    const result = await evalPromise;
+
+    expect(result).toEqual([{ scoreCp: 20, mateIn: null, bestUci: 'e2e4' }]);
+  });
+
   it('quit() manda el comando y mata el proceso', async () => {
     const { engine, process } = startedEngine();
     process.emit('uciok');
