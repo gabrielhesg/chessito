@@ -32,6 +32,13 @@ const schema = z.object({
 const optionalSchema = z.object({
   /** Solo la usan los scripts batch y la generacion de tipos. La app no la necesita. */
   SUPABASE_DB_URL: z.string().min(1).optional(),
+  /**
+   * Token de GitHub con permiso Actions: Read and write sobre este repo. Solo lo usa
+   * lib/github.ts para el boton "Analizar ahora" de /salud, que dispara el workflow
+   * analyze.yml sin que Gabriel tenga que entrar a GitHub. Si falta, ese boton falla con un
+   * mensaje claro; el resto de la app no depende de esto.
+   */
+  GITHUB_TOKEN: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof schema> & z.infer<typeof optionalSchema>;
