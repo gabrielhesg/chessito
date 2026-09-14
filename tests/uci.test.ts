@@ -103,6 +103,21 @@ describe('UciEngine', () => {
     expect(result).toEqual({ scoreCp: null, mateIn: 3, bestUci: 'g1f3' });
   });
 
+  it('evaluate() deja bestUci en null cuando la posicion no tiene jugadas legales ("bestmove (none)")', async () => {
+    // Pasa en la ultima jugada de una partida que termina en jaque mate: Stockfish responde
+    // "bestmove (none)" (6 caracteres) para la posicion resultante, que no cabe en varchar(5).
+    const { engine, process } = startedEngine();
+    process.emit('uciok');
+    await engine.start();
+
+    const evalPromise = engine.evaluate(['e2e4', 'f7f6', 'd2d4', 'g7g5', 'd1h5'], 800000);
+    process.emit('info depth 1 score mate 0');
+    process.emit('bestmove (none)');
+    const result = await evalPromise;
+
+    expect(result.bestUci).toBeNull();
+  });
+
   it('buildEngineId combina nombre, nodos e hilos sin hardcodear nada', async () => {
     const { engine, process } = startedEngine();
     process.emit('id name Stockfish 16.1');

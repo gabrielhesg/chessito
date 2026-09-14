@@ -24,7 +24,8 @@ export type EvalResult = {
   scoreCp: number | null;
   /** Jugadas hasta el mate, positivo si mueve el que gana. null si no hay mate en la linea principal. */
   mateIn: number | null;
-  bestUci: string;
+  /** null cuando la posicion no tiene jugadas legales (jaque mate o ahogado): el motor responde "bestmove (none)". */
+  bestUci: string | null;
 };
 
 export class UciEngine {
@@ -118,7 +119,8 @@ export class UciEngine {
       },
     );
 
-    const bestUci = bestmoveLine.split(' ')[1] ?? '';
+    const rawBestUci = bestmoveLine.split(' ')[1] ?? '';
+    const bestUci = rawBestUci === '(none)' ? null : rawBestUci;
     return { scoreCp, mateIn, bestUci };
   }
 
