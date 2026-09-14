@@ -393,7 +393,7 @@ El entrenador ya sirve ejercicios. Sin migración nueva: `puzzles`, `puzzle_atte
 | La única función de construcción | `lib/puzzles/run.ts` (`runBuildPuzzles`) |
 | Escritura interactiva (repetición espaciada) | `lib/spaced-repetition/actions.ts` (`recordAttempt`) |
 | Página, y primer componente cliente de la app | `app/entrenador/page.tsx`, `components/TrainerBoard.tsx` |
-| Workflow | `.github/workflows/puzzles.yml` (cron diario después de `analyze` + `workflow_dispatch`) |
+| Workflow | `.github/workflows/puzzles.yml` (solo `workflow_dispatch`, para disparar a mano) |
 
 **`lib/puzzles/store.ts` tampoco tiene dos transportes, mismo criterio que `lib/analysis/store.ts`.**
 `build-puzzles.ts` solo corre en GitHub Actions/local, nunca desde Vercel: no hay un segundo
@@ -434,6 +434,14 @@ las dos falla se loguea, no es tan crítico como sí lo es `saveAnalysis` del an
 
 **El respaldo NDJSON no cambió.** `scripts/backup-ndjson.ts` ya volcaba `puzzle_attempts` desde
 la Fase 3 (aunque estuviera vacía), así que la Fase 4 no tuvo que tocar ese script.
+
+**`analyze.yml` corre `puzzles:build` como su último paso, mismo patrón que `ingest.yml` con
+`moves:extract`.** Sin blunders clasificados no hay candidatos para el entrenador, así que
+encadenarlo evita el mismo error que le pasó a `moves` al principio (un backfill que deja el
+siguiente paso esperando para siempre a que alguien lo dispare a mano). Reusa el binario de
+Stockfish que ya bajó el paso "Instalar Stockfish" (mismo `STOCKFISH_PATH`), no lo vuelve a
+bajar. `puzzles.yml` quedó solo con `workflow_dispatch`, sin `schedule` propio, para no
+duplicar la corrida diaria.
 
 **Lo que NO está hecho y no es un olvido.** `clavada` como theme (ver arriba). `docs/validacion-lichess.md`
 sigue con la plantilla lista pero sin completar — es un ritual manual de Gabriel, no algo que se

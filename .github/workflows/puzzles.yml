@@ -1,11 +1,11 @@
 name: puzzles
 
-# Genera ejercicios desde los blunders reales de Gabriel (Fase 4). Corre despues de `analyze`
-# porque necesita partidas con `moves.classification` ya poblado por el motor: sin blunders
-# clasificados no hay candidatos. Mismo patron que analyze.yml: solo main, solo produccion.
+# Genera ejercicios desde los blunders reales de Gabriel (Fase 4). Necesita partidas con
+# `moves.classification` ya poblado por el motor, asi que `analyze.yml` ya lo corre como su
+# ultimo paso (`pnpm puzzles:build`) despues de cada analisis, cron o manual: no tiene su propio
+# `schedule` aca, para no duplicar la corrida diaria. Este workflow queda solo para dispararlo a
+# mano (backfill por tandas, o forzar una corrida sin esperar al proximo `analyze`).
 on:
-  schedule:
-    - cron: '15 9 * * *'
   workflow_dispatch:
     inputs:
       batch:
