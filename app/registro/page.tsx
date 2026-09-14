@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { listGames, openingNames } from '@/lib/data';
 import { formatTimeControl } from '@/lib/chess/timecontrol';
-import { Panel, SortableTh, Tabla, Vacio } from '@/components/ui';
+import { Badge, EmptyState, Fila, PageHeader, Panel, SortableTh, Tabla, Td } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,10 +19,11 @@ function Filtro({ href, activo, children }: { href: string; activo: boolean; chi
   return (
     <Link
       href={href}
-      className={`rounded border px-2 py-0.5 text-xs ${
+      aria-current={activo ? 'true' : undefined}
+      className={`rounded-lg border px-2.5 py-1 text-xs transition-colors ${
         activo
-          ? 'border-[var(--color-texto)] text-[var(--color-texto)]'
-          : 'border-[var(--color-borde)] text-[var(--color-tenue)]'
+          ? 'border-acento bg-acento/10 font-medium text-acento'
+          : 'border-borde text-tenue hover:border-borde-fuerte hover:text-texto'
       }`}
     >
       {children}
@@ -60,80 +61,131 @@ export default async function RegistroPage({
   };
   const sortLink = (nextSort: string, nextDir: 'asc' | 'desc'): string => link({ sort: nextSort, dir: nextDir });
 
+  const hayFiltro = Boolean(timeClass || color || result);
+
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-xl font-semibold">Registro</h1>
-        <p className="mt-1 text-sm text-[var(--color-tenue)]">
-          {total} partidas con estos filtros. Se muestran las 100 mas recientes.
-        </p>
-      </header>
+      <PageHeader titulo="Partidas">
+        {total.toLocaleString('es-CL')} partidas con estos filtros. Se muestran las 100 más
+        recientes.
+      </PageHeader>
 
-      <div className="flex flex-wrap gap-2">
-        <Filtro href={link({ clase: undefined })} activo={!timeClass}>todas</Filtro>
+      <div className="flex flex-wrap items-center gap-2">
+        <Filtro href={link({ clase: undefined })} activo={!timeClass}>
+          todas
+        </Filtro>
         {CLASES.map((c) => (
-          <Filtro key={c} href={link({ clase: c })} activo={timeClass === c}>{c}</Filtro>
+          <Filtro key={c} href={link({ clase: c })} activo={timeClass === c}>
+            {c}
+          </Filtro>
         ))}
-        <span className="w-full" />
-        <Filtro href={link({ color: undefined })} activo={!color}>ambos colores</Filtro>
-        <Filtro href={link({ color: 'white' })} activo={color === 'white'}>blancas</Filtro>
-        <Filtro href={link({ color: 'black' })} activo={color === 'black'}>negras</Filtro>
-        <span className="w-full" />
-        <Filtro href={link({ resultado: undefined })} activo={!result}>todo resultado</Filtro>
+        <span aria-hidden className="mx-1 h-4 w-px bg-borde" />
+        <Filtro href={link({ color: undefined })} activo={!color}>
+          ambos colores
+        </Filtro>
+        <Filtro href={link({ color: 'white' })} activo={color === 'white'}>
+          blancas
+        </Filtro>
+        <Filtro href={link({ color: 'black' })} activo={color === 'black'}>
+          negras
+        </Filtro>
+        <span aria-hidden className="mx-1 h-4 w-px bg-borde" />
+        <Filtro href={link({ resultado: undefined })} activo={!result}>
+          todo resultado
+        </Filtro>
         {(Object.keys(RESULTADOS) as (keyof typeof RESULTADOS)[]).map((r) => (
-          <Filtro key={r} href={link({ resultado: r })} activo={result === r}>{RESULTADOS[r]}</Filtro>
+          <Filtro key={r} href={link({ resultado: r })} activo={result === r}>
+            {RESULTADOS[r]}
+          </Filtro>
         ))}
       </div>
 
-      <Panel title="Partidas">
+      <Panel>
         {rows.length === 0 ? (
-          <Vacio>Ninguna partida con estos filtros.</Vacio>
+          <EmptyState
+            titulo="Ninguna partida con estos filtros"
+            detalle={hayFiltro ? 'Prueba quitando alguno de los filtros de arriba.' : undefined}
+            accion={
+              hayFiltro ? (
+                <Link href="/registro" className="text-xs text-acento hover:underline">
+                  Quitar todos los filtros
+                </Link>
+              ) : null
+            }
+          />
         ) : (
           <Tabla
+            aligns={['text', 'text', 'text', 'text', 'text', 'num', 'text', 'text']}
             headers={[
-              <SortableTh key="fecha" label="Fecha" sortKey="end_time" currentSort={sort} currentDir={dir} href={sortLink} />,
+              <SortableTh
+                key="fecha"
+                label="Fecha"
+                sortKey="end_time"
+                currentSort={sort}
+                currentDir={dir}
+                href={sortLink}
+              />,
               'Tipo',
               'Color',
               'Resultado',
-              'Final',
               'Rival',
-              <SortableTh key="rating" label="Rating" sortKey="my_rating" currentSort={sort} currentDir={dir} href={sortLink} />,
+              <SortableTh
+                key="rating"
+                label="Rating"
+                sortKey="my_rating"
+                currentSort={sort}
+                currentDir={dir}
+                href={sortLink}
+              />,
               'Apertura',
               '',
             ]}
           >
             {rows.map((g) => (
-              <tr key={g.id} className="border-b border-[var(--color-borde)]/50">
-                <td className="py-1.5 pr-3 tabular-nums">
+              <Fila key={g.id}>
+                <Td className="whitespace-nowrap tabular-nums text-tenue">
                   {new Date(g.end_time).toLocaleString('es-CL', {
                     timeZone: 'America/Santiago',
                     dateStyle: 'short',
                     timeStyle: 'short',
                   })}
-                </td>
-                <td className="py-1.5 pr-3">{g.time_class} {formatTimeControl(g.time_control)}</td>
-                <td className="py-1.5 pr-3">{g.my_color === 'white' ? 'blancas' : 'negras'}</td>
-                <td
-                  className={`py-1.5 pr-3 ${
-                    g.result === 'win'
-                      ? 'text-[var(--color-bien)]'
-                      : g.result === 'loss'
-                        ? 'text-[var(--color-mal)]'
-                        : ''
-                  }`}
-                >
-                  {g.result === 'win' ? 'gana' : g.result === 'loss' ? 'pierde' : 'tablas'}
-                </td>
-                <td className="py-1.5 pr-3 text-[var(--color-tenue)]">{g.termination}</td>
-                <td className="py-1.5 pr-3">{g.opp_username}</td>
-                <td className="py-1.5 pr-3 tabular-nums">{g.my_rating} vs {g.opp_rating}</td>
-                <td className="py-1.5 pr-3">{g.opening_id ? (nombres.get(g.opening_id) ?? 'Sin resolver') : 'Sin resolver'}</td>
-                <td className="py-1.5 pr-3">
-                  <a className="text-[var(--color-tenue)] underline" href={g.url} target="_blank" rel="noreferrer">
-                    ver
+                </Td>
+                <Td className="whitespace-nowrap">
+                  <Badge>{formatTimeControl(g.time_control)}</Badge>
+                </Td>
+                <Td>
+                  <span
+                    aria-hidden
+                    className={`mr-1.5 inline-block h-2 w-2 rounded-full align-middle ${
+                      g.my_color === 'white' ? 'bg-ventaja-blancas' : 'border border-borde-fuerte bg-ventaja-negras'
+                    }`}
+                  />
+                  {g.my_color === 'white' ? 'blancas' : 'negras'}
+                </Td>
+                <Td>
+                  <Badge tono={g.result === 'win' ? 'bien' : g.result === 'loss' ? 'critico' : 'neutro'}>
+                    {g.result === 'win' ? 'ganó' : g.result === 'loss' ? 'perdió' : 'tablas'}
+                  </Badge>
+                  <span className="ml-1.5 text-2xs text-apagado">{g.termination}</span>
+                </Td>
+                <Td className="whitespace-nowrap">{g.opp_username}</Td>
+                <Td num className="whitespace-nowrap">
+                  {g.my_rating} <span className="text-apagado">vs</span> {g.opp_rating}
+                </Td>
+                <Td className="max-w-[16rem] truncate text-tenue">
+                  {g.opening_id ? (nombres.get(g.opening_id) ?? 'Sin resolver') : 'Sin resolver'}
+                </Td>
+                <Td>
+                  <a
+                    className="whitespace-nowrap text-xs text-tenue hover:text-texto hover:underline"
+                    href={g.url}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    chess.com ↗
                   </a>
-                </td>
-              </tr>
+                </Td>
+              </Fila>
             ))}
           </Tabla>
         )}

@@ -22,6 +22,7 @@ export default defineConfig({
       // docs/ENGINEERING.md: 80% en la logica de dominio. En app/ no se exige.
       include: [
         'lib/chess/**/*.ts',
+        'lib/charts/**/*.ts',
         'lib/engine/**/*.ts',
         'lib/analysis/**/*.ts',
         'lib/puzzles/**/*.ts',

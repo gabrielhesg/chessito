@@ -1,18 +1,79 @@
 @import "tailwindcss";
 
+/**
+ * Sistema de diseno. Los nombres de token de la Fase 1 se conservan (fondo, panel, borde,
+ * texto, tenue, bien, mal, aviso) para no romper las paginas que ya los usan; lo que cambia
+ * son los valores y lo que se agrega son los niveles que faltaban.
+ *
+ * Los colores de serie y de estado NO se eligieron a ojo: salieron del validador de la guia
+ * de visualizacion corrido contra la superficie real de los graficos (--color-panel). El trio
+ * serie-1/2/3 pasa las cinco verificaciones en modo "todos los pares". Los de estado
+ * (imprecision/error/grave) son hues vecinos y NO pasan como paleta categorica: por eso cada
+ * clasificacion se muestra siempre con glifo y texto (?! / ? / ??), nunca por color solo.
+ */
 @theme {
-  --color-fondo: #0f1115;
-  --color-panel: #171a21;
-  --color-borde: #262b36;
+  /* Superficies, de atras hacia adelante */
+  --color-fondo: #0b0d12;
+  --color-panel: #141821;
+  --color-panel-alto: #1b2029;
+  --color-borde: #232936;
+  --color-borde-fuerte: #39414f;
+
+  /* Tinta, tres niveles (antes habia dos) */
   --color-texto: #e6e8ec;
   --color-tenue: #8b93a3;
-  --color-bien: #3fa96b;
-  --color-mal: #d3564f;
-  --color-aviso: #d99f43;
+  --color-apagado: #5c6474;
+
+  /* Acento de marca: links, foco, elemento activo. Antes no existia ninguno. */
+  --color-acento: #3987e5;
+  --color-acento-fondo: #14243a;
+
+  /* Estado. Siempre acompanados de icono o texto, nunca color solo. */
+  --color-bien: #0ca30c;
+  --color-aviso: #fab219;
+  --color-serio: #ec835a;
+  --color-critico: #d03b3b;
+  --color-mal: #d03b3b;
+
+  /* Series de graficos (validadas contra --color-panel) */
+  --color-serie-1: #3987e5;
+  --color-serie-2: #d95926;
+  --color-serie-3: #199e70;
+
+  /* Cromo de graficos: recesivo por definicion */
+  --color-reticula: #1e2430;
+  --color-eje: #39414f;
+
+  /* Ventaja en el grafico de evaluacion: divergente blanco/negro */
+  --color-ventaja-blancas: #d7dae1;
+  --color-ventaja-negras: #39414f;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
+
+  /* Un escalon mas chico que text-xs, para encabezados de tabla y metadatos. */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+
+  --shadow-panel: 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-flotante: 0 8px 24px -4px rgb(0 0 0 / 0.5), 0 2px 6px -2px rgb(0 0 0 / 0.3);
 }
 
-html,
-body {
-  background-color: var(--color-fondo);
-  color: var(--color-texto);
+@layer base {
+  html,
+  body {
+    background-color: var(--color-fondo);
+    color: var(--color-texto);
+  }
+
+  /* El foco visible es accesibilidad, no decoracion: sin esto el teclado navega a ciegas. */
+  :focus-visible {
+    outline: 2px solid var(--color-acento);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background-color: var(--color-acento-fondo);
+  }
 }
