@@ -75,6 +75,24 @@ jobs:
           ENGINE_NODES: '800000'
           ENGINE_THREADS: ${{ steps.hilos.outputs.threads }}
         run: pnpm analyze --batch ${{ inputs.batch || '500' }}
+      - name: Construir ejercicios
+        if: steps.secretos.outputs.listos == 'true'
+        # Encadenado igual que moves:extract al final de ingest.yml: sin este paso, el
+        # entrenador (Fase 4) se queda sin candidatos nuevos hasta que alguien dispare el
+        # workflow `puzzles` a mano. `puzzles:build` reusa el mismo binario de Stockfish que ya
+        # bajo el paso "Instalar Stockfish" (STOCKFISH_PATH via GITHUB_ENV), no lo vuelve a bajar.
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          CHESSCOM_USERNAME: ${{ secrets.CHESSCOM_USERNAME }}
+          OWNER_EMAIL: ${{ secrets.OWNER_EMAIL }}
+          CRON_SECRET: no-aplica-en-actions
+          APP_ENV: prod
+          ENGINE_NODES: '800000'
+          ENGINE_THREADS: ${{ steps.hilos.outputs.threads }}
+        run: pnpm puzzles:build --batch 200
       - name: Respaldo NDJSON a Supabase Storage
         if: steps.secretos.outputs.listos == 'true'
         env:
