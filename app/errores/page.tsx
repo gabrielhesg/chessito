@@ -1,4 +1,4 @@
-import { analysisCoverage, errorsByMoveTime, errorsByPhase } from '@/lib/data';
+import { analysisCoverage, errorsByMoveTime, errorsByPhase, errorsDiagnostic } from '@/lib/data';
 import { Muestra, Panel, Tabla, Vacio, filaAtenuada, pct } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
@@ -18,6 +18,11 @@ export default async function ErroresPage() {
   const totales = cobertura.reduce((s, c) => s + (c.n_games ?? 0), 0);
   const clases = [...new Set(porFase.map((f) => f.time_class).filter((c): c is string => c !== null))].sort();
 
+  // Hay partidas analizadas pero las tablas de abajo salen vacias: algo esta filtrando todas
+  // las filas (is_mine, is_book o is_decided). En vez de pedir una consulta a mano, la propia
+  // app se responde con el mismo desglose.
+  const diagnostico = analizadas > 0 && porFase.length === 0 ? await errorsDiagnostic() : null;
+
   return (
     <div className="space-y-6">
       <header>
@@ -28,6 +33,32 @@ export default async function ErroresPage() {
           flojo en una partida ganada no cuenta como blunder.
         </p>
       </header>
+
+      {diagnostico ? (
+        <Panel
+          title="Diagnostico"
+          subtitle="Hay partidas analizadas pero las tablas de abajo salen vacias. Este es el desglose de por que."
+        >
+          <ul className="space-y-1 text-sm">
+            <li>
+              Jugadas con clasificacion (de cualquiera): <strong className="tabular-nums">{diagnostico.conClasificacion}</strong>
+            </li>
+            <li>
+              De esas, mias (<code>is_mine</code>): <strong className="tabular-nums">{diagnostico.mias}</strong>
+            </li>
+            <li>
+              De esas, fuera de libro (<code>is_book = false</code>): <strong className="tabular-nums">{diagnostico.miasNoLibro}</strong>
+            </li>
+            <li>
+              De esas, en partida no decidida (<code>is_decided = false</code>):{' '}
+              <strong className="tabular-nums">{diagnostico.miasNoLibroNoDecidida}</strong>
+            </li>
+          </ul>
+          <p className="mt-2 text-xs text-[var(--color-tenue)]">
+            El escalon donde el numero se cae a 0 (o queda muy chico) es el filtro responsable.
+          </p>
+        </Panel>
+      ) : null}
 
       <Panel title="Blunders por fase" subtitle="Tasa de errores segun en que momento de la partida ocurren">
         {porFase.length === 0 ? (
