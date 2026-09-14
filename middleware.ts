@@ -35,6 +35,23 @@ export async function middleware(request: NextRequest) {
     },
   });
 
+  // Supabase manda el link del correo de signInWithOtp de vuelta a `Site URL` con `?code=...`
+  // (flujo PKCE), no con el token de 6 digitos: la plantilla de correo por omision no expone
+  // `{{ .Token }}` en texto y cambiarla pide SMTP propio. En vez de depender de la plantilla,
+  // el propio middleware canjea el code por una sesion si lo encuentra, así clickear el link
+  // del correo entra igual que escribir el codigo en /entrar (verificarCodigo sigue existiendo
+  // como respaldo, por si el link no llega o vence).
+  const code = request.nextUrl.searchParams.get('code');
+  if (code) {
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error) {
+      return NextResponse.redirect(new URL(`/entrar?error=${encodeURIComponent(error.message)}`, request.url));
+    }
+    const clean = new URL(request.nextUrl.pathname, request.url);
+    response.headers.set('location', clean.toString());
+    return new NextResponse(null, { status: 307, headers: response.headers });
+  }
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
