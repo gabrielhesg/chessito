@@ -27,6 +27,15 @@ export type PuzzleRow = {
   winPctLoss: number;
   isUnique: boolean;
   theme: Theme | null;
+  myColor: GameColor;
+  /** Linea principal completa del motor: el ejercicio se juega hasta el final, no una jugada. */
+  solutionLine: string[];
+  /** Linea desde la posicion despues del blunder: como te castigaba el rival. */
+  refutationLine: string[];
+  evalBestCp: number | null;
+  evalPlayedCp: number | null;
+  secondBestUci: string | null;
+  secondBestCp: number | null;
 };
 
 export class PuzzleStore {
@@ -92,14 +101,82 @@ export class PuzzleStore {
     return res.rows.map((row) => row.uci);
   }
 
+  /**
+   * `on conflict ... do update` en vez de `do nothing`: asi `puzzles:enrich` puede rellenar las
+   * lineas de los ejercicios construidos antes de la migracion 0007 sin borrar su progreso de
+   * repeticion espaciada (due_at, ease, interval_days y lapses NO se tocan).
+   */
   async insertPuzzle(row: PuzzleRow): Promise<void> {
     const client = await this.connect();
     await client.query(
-      `insert into puzzles (game_id, ply, fen, played_uci, best_uci, cp_loss, win_pct_loss, is_unique, theme)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       on conflict (game_id, ply) do nothing`,
-      [row.gameId, row.ply, row.fen, row.playedUci, row.bestUci, row.cpLoss, row.winPctLoss, row.isUnique, row.theme],
+      `insert into puzzles (
+         game_id, ply, fen, played_uci, best_uci, cp_loss, win_pct_loss, is_unique, theme,
+         my_color, solution_line, refutation_line, eval_best_cp, eval_played_cp,
+         second_best_uci, second_best_cp
+       )
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+       on conflict (game_id, ply) do update set
+         is_unique       = excluded.is_unique,
+         theme           = excluded.theme,
+         my_color        = excluded.my_color,
+         solution_line   = excluded.solution_line,
+         refutation_line = excluded.refutation_line,
+         eval_best_cp    = excluded.eval_best_cp,
+         eval_played_cp  = excluded.eval_played_cp,
+         second_best_uci = excluded.second_best_uci,
+         second_best_cp  = excluded.second_best_cp`,
+      [
+        row.gameId,
+        row.ply,
+        row.fen,
+        row.playedUci,
+        row.bestUci,
+        row.cpLoss,
+        row.winPctLoss,
+        row.isUnique,
+        row.theme,
+        row.myColor,
+        row.solutionLine,
+        row.refutationLine,
+        row.evalBestCp,
+        row.evalPlayedCp,
+        row.secondBestUci,
+        row.secondBestCp,
+      ],
     );
+  }
+
+  /**
+   * Candidatos para `puzzles:enrich`: ejercicios ya construidos a los que les faltan las lineas
+   * (los de antes de la migracion 0007). Se reusa la forma de `BlunderCandidate` para que
+   * `runBuildPuzzles` los procese con el mismo camino, sin una segunda implementacion.
+   */
+  async claimIncompletePuzzles(limit: number): Promise<BlunderCandidate[]> {
+    const client = await this.connect();
+    const res = await client.query<{
+      game_id: number;
+      my_color: GameColor;
+      ply: number;
+      played_uci: string;
+      cp_loss: number;
+      win_pct_loss: number;
+    }>(
+      `select p.game_id, g.my_color, p.ply, p.played_uci, p.cp_loss, p.win_pct_loss
+         from puzzles p
+         join games g on g.id = p.game_id
+        where p.refutation_line is null
+        order by p.due_at
+        limit $1`,
+      [limit],
+    );
+    return res.rows.map((row) => ({
+      gameId: row.game_id,
+      myColor: row.my_color,
+      ply: row.ply,
+      playedUci: row.played_uci,
+      cpLoss: row.cp_loss,
+      winPctLoss: row.win_pct_loss,
+    }));
   }
 
   async startJobRun(input: JobRunInput): Promise<number> {

@@ -199,11 +199,16 @@ export async function errorsByMoveTime(): Promise<ErrorsByMoveTime[]> {
 }
 
 /** El proximo ejercicio a resolver: el que vence hace mas tiempo, entre los que pasaron el filtro MultiPV. */
+/**
+ * El proximo ejercicio vencido. Ya NO filtra por `is_unique`: esos ejercicios se construian
+ * pagando tiempo de motor y despues no se servian nunca, porque el indice parcial los dejaba
+ * afuera (ver la migracion 0007). Ahora se sirven igual y la UI avisa que hay mas de una jugada
+ * buena, que es informacion util y no un motivo para esconder el ejercicio.
+ */
 export async function nextDuePuzzle(): Promise<Puzzle | null> {
   const { data, error } = await supabaseAdmin()
     .from('puzzles')
     .select('*')
-    .eq('is_unique', true)
     .lte('due_at', new Date().toISOString())
     .order('due_at', { ascending: true })
     .limit(1)
@@ -217,10 +222,34 @@ export async function dueCount(): Promise<number> {
   const { count, error } = await supabaseAdmin()
     .from('puzzles')
     .select('id', { count: 'exact', head: true })
-    .eq('is_unique', true)
     .lte('due_at', new Date().toISOString());
   if (error) fail('puzzles', error.message);
   return count ?? 0;
+}
+
+/** Aciertos y fallos por patron tactico: en que tipo de error se tropieza mas seguido. */
+export async function puzzleStatsByTheme(): Promise<
+  Array<{ theme: string | null; intentos: number; aciertos: number }>
+> {
+  const { data, error } = await supabaseAdmin()
+    .from('puzzle_attempts')
+    .select('correct, attempt_no, puzzles(theme)')
+    .eq('attempt_no', 1)
+    .limit(2000);
+  if (error) fail('puzzle_attempts', error.message);
+
+  const porTema = new Map<string | null, { intentos: number; aciertos: number }>();
+  for (const fila of data ?? []) {
+    const relacion = (fila as { puzzles?: { theme: string | null } | { theme: string | null }[] }).puzzles;
+    const tema = (Array.isArray(relacion) ? relacion[0]?.theme : relacion?.theme) ?? null;
+    const acc = porTema.get(tema) ?? { intentos: 0, aciertos: 0 };
+    acc.intentos += 1;
+    if ((fila as { correct: boolean }).correct) acc.aciertos += 1;
+    porTema.set(tema, acc);
+  }
+  return [...porTema.entries()]
+    .map(([theme, v]) => ({ theme, ...v }))
+    .sort((a, b) => b.intentos - a.intentos);
 }
 
 export async function lastJobRuns(limit = 15): Promise<JobRun[]> {

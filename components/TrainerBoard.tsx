@@ -1,25 +1,27 @@
 'use client';
 
-/**
- * El primer componente cliente de la app. Necesita interaccion (arrastrar una pieza, validar la
- * jugada) que un Server Component no puede resolver. `chess.js` valida legalidad contra
- * `puzzle.fen`; la jugada correcta es `puzzle.bestUci` (la mejor jugada, NO `puzzle.playedUci`,
- * que es el blunder que Gabriel realmente jugo).
- *
- * Sin gamificacion, rachas ni notificaciones (docs/prompts/fase4-entrenador.md, ultima linea):
- * solo el ejercicio y el resultado.
- */
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Chess } from 'chess.js';
 import { Chessboard } from 'react-chessboard';
 import { recordAttempt } from '@/lib/spaced-repetition/actions';
+import { explicarBlunder, type Explicacion, type Linea } from '@/lib/puzzles/explain';
+import { Badge, Button } from '@/components/ui';
 
-export type TrainerPuzzle = {
+export type PuzzleUI = {
   id: number;
+  gameId: number;
+  ply: number;
   fen: string;
+  playedUci: string;
   bestUci: string;
+  solutionLine: string[] | null;
+  refutationLine: string[] | null;
+  cpLoss: number;
+  isUnique: boolean;
+  secondBestUci: string | null;
   theme: string | null;
+  myColor: 'white' | 'black' | null;
 };
 
 const NOMBRE_THEME: Record<string, string> = {
@@ -28,77 +30,391 @@ const NOMBRE_THEME: Record<string, string> = {
   permite_horquilla: 'Permite horquilla',
 };
 
-export function TrainerBoard({ puzzle, dueCount }: { puzzle: TrainerPuzzle; dueCount: number }) {
-  const router = useRouter();
-  const [game] = useState(() => new Chess(puzzle.fen));
-  const [position, setPosition] = useState(puzzle.fen);
-  const [result, setResult] = useState<'correct' | 'incorrect' | null>(null);
-  const startedAtRef = useRef(0);
-  const attemptRef = useRef<Promise<void> | null>(null);
+const MAX_INTENTOS = 3;
 
-  // Se marca el inicio del intento fuera del render (efecto, no cuerpo del componente): leer el
-  // reloj durante el render es impuro y react-hooks/purity lo rechaza.
-  useEffect(() => {
-    startedAtRef.current = typeof performance !== 'undefined' ? performance.now() : Date.now();
-  }, [puzzle.id]);
+type Estado = 'jugando' | 'resuelto' | 'fallado';
 
-  function onPieceDrop({
-    sourceSquare,
-    targetSquare,
-  }: {
-    sourceSquare: string;
-    targetSquare: string | null;
-  }): boolean {
-    if (result !== null || !targetSquare) return false;
+/**
+ * Pinta la linea como la leeria un ajedrecista: `12.Nf3 Nc6 13.Bb5`. Una linea que arranca con
+ * jugada de negras lleva los puntos suspensivos (`12...Qe7`), que es la convencion y ademas es
+ * lo unico que deja claro de quien es la jugada.
+ */
+function LineaJugadas({ linea, desdePly }: { linea: Linea; desdePly: number }) {
+  return (
+    <ol className="flex flex-wrap items-baseline gap-x-2 gap-y-1 font-mono text-sm">
+      {linea.pasos.map((paso, i) => {
+        const plyAbsoluto = desdePly + i;
+        const numeroJugada = Math.ceil(plyAbsoluto / 2);
+        const esBlancas = plyAbsoluto % 2 === 1;
+        const prefijo = esBlancas ? `${numeroJugada}.` : i === 0 ? `${numeroJugada}...` : null;
+        return (
+          <li key={i} className="flex items-baseline gap-1">
+            {prefijo ? <span className="text-apagado">{prefijo}</span> : null}
+            <span className={paso.mia ? 'text-texto' : 'text-tenue'}>{paso.san}</span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
 
-    let move;
-    try {
-      move = game.move({ from: sourceSquare, to: targetSquare, promotion: 'q' });
-    } catch {
-      return false;
-    }
-
-    const playedUci = `${move.from}${move.to}${move.promotion ?? ''}`;
-    const correct = playedUci === puzzle.bestUci;
-    setPosition(game.fen());
-    setResult(correct ? 'correct' : 'incorrect');
-
-    const msTaken = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAtRef.current);
-    attemptRef.current = recordAttempt(puzzle.id, correct, msTaken);
-    return true;
-  }
-
-  /** Espera a que el intento haya quedado registrado (SM-2 aplicado) antes de pedir el siguiente. */
-  async function siguiente(): Promise<void> {
-    await attemptRef.current;
-    router.refresh();
-  }
+function PanelExplicacion({
+  explicacion,
+  puzzle,
+  estado,
+}: {
+  explicacion: Explicacion;
+  puzzle: PuzzleUI;
+  estado: Estado;
+}) {
+  const { refutacion, solucion, jugadaSan, mejorSan } = explicacion;
+  const material = refutacion?.materialPerdido ?? 0;
 
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-[var(--color-tenue)]">
-        {dueCount} ejercicio{dueCount === 1 ? '' : 's'} pendiente{dueCount === 1 ? '' : 's'}
-        {puzzle.theme && NOMBRE_THEME[puzzle.theme] ? ` · ${NOMBRE_THEME[puzzle.theme]}` : ''}
-      </p>
-
-      <div className="max-w-[480px]">
-        <Chessboard options={{ position, onPieceDrop }} />
+    <div className="space-y-4 text-sm">
+      <div
+        className={`rounded-lg border px-3 py-2 ${
+          estado === 'resuelto' ? 'border-bien/40 bg-bien/10 text-bien' : 'border-critico/40 bg-critico/10 text-critico'
+        }`}
+      >
+        {estado === 'resuelto' ? (
+          <>
+            <strong>Correcto.</strong> {mejorSan} era la jugada.
+          </>
+        ) : (
+          <>
+            <strong>La jugada era {mejorSan}.</strong> En la partida jugaste {jugadaSan}.
+          </>
+        )}
       </div>
 
-      {result ? (
-        <div className="space-y-2 text-sm">
-          <p className={result === 'correct' ? 'text-[var(--color-bien)]' : 'text-[var(--color-mal)]'}>
-            {result === 'correct' ? 'Correcto.' : `Incorrecto. La jugada era ${puzzle.bestUci}.`}
+      {refutacion ? (
+        <div>
+          {/* Sin `uppercase`: en notacion de ajedrez la caja es significativa (N de caballo vs
+              la columna f), asi que "Nf6" en mayusculas seria otra jugada distinta. */}
+          <p className="mb-1 text-2xs tracking-wider text-tenue">
+            <span className="uppercase">Por qué</span> <span className="font-mono text-texto">{jugadaSan}</span>{' '}
+            <span className="uppercase">pierde</span>
           </p>
-          <button
-            type="button"
-            onClick={() => void siguiente()}
-            className="rounded border border-[var(--color-borde)] px-3 py-1.5 text-sm hover:bg-[var(--color-panel)]"
-          >
-            Siguiente
-          </button>
+          <div className="rounded-lg border border-borde bg-panel-alto px-3 py-2">
+            <LineaJugadas linea={refutacion} desdePly={puzzle.ply + 1} />
+            <p className="mt-2 text-xs text-tenue">
+              {refutacion.terminaEnMate ? (
+                <>
+                  Tu rival da <strong className="text-critico">mate</strong> por la fuerza.
+                </>
+              ) : material > 0 ? (
+                <>
+                  Pierdes <strong className="text-critico">{material}</strong>{' '}
+                  {material === 1 ? 'punto' : 'puntos'} de material
+                  {refutacion.pasos.find((p) => p.captura && !p.mia)
+                    ? `: se lleva ${refutacion.pasos.find((p) => p.captura && !p.mia)?.captura?.nombre}`
+                    : ''}
+                  .
+                </>
+              ) : (
+                <>
+                  No pierde material de inmediato, pero la posición empeora{' '}
+                  {(puzzle.cpLoss / 100).toFixed(1)} puntos según el motor.
+                </>
+              )}
+            </p>
+          </div>
+        </div>
+      ) : (
+        <p className="text-xs text-tenue">
+          Este ejercicio todavía no tiene la línea de refutación guardada. Se rellena la próxima
+          vez que corra <code className="text-apagado">puzzles:enrich</code>.
+        </p>
+      )}
+
+      {solucion && solucion.pasos.length > 1 ? (
+        <div>
+          <p className="mb-1 text-2xs tracking-wider text-tenue">
+            <span className="uppercase">Qué lograba</span>{' '}
+            <span className="font-mono text-texto">{mejorSan}</span>
+          </p>
+          <div className="rounded-lg border border-borde bg-panel-alto px-3 py-2">
+            <LineaJugadas linea={solucion} desdePly={puzzle.ply} />
+          </div>
         </div>
       ) : null}
+
+      <div className="flex flex-wrap items-center gap-2 text-xs text-tenue">
+        <span>
+          Costó <strong className="text-texto">{(puzzle.cpLoss / 100).toFixed(1)}</strong> puntos
+        </span>
+        {!puzzle.isUnique && puzzle.secondBestUci ? (
+          <Badge tono="acento">Había más de una jugada buena</Badge>
+        ) : null}
+        <a
+          href={`/partida/${puzzle.gameId}?ply=${puzzle.ply}`}
+          className="text-acento hover:underline"
+        >
+          Ver la partida completa →
+        </a>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * El entrenador. Reescrito en la Fase 6C contra tres quejas concretas del uso real:
+ *
+ *  1. "los ejercicios son solo un movimiento" -> se camina `solution_line`: juegas la mejor, el
+ *     rival responde solo desde la linea del motor, y sigues hasta terminarla.
+ *  2. "si me equivoco no puedo intentarlo de nuevo" -> una jugada mala hace `undo()` y descuenta
+ *     un intento de tres, en vez de bloquear el tablero para siempre.
+ *  3. "no me explica por que me equivoque" -> al cerrar se juega la linea de refutacion en el
+ *     tablero y se muestra el panel de `lib/puzzles/explain.ts`.
+ *
+ * Nada de esto es gamificacion (la regla de la Fase 4 sigue en pie: sin rachas, sin insignias,
+ * sin notificaciones). Reintentar y explicar son las dos cosas que hacen que el ejercicio ensene
+ * algo en vez de solo puntuar.
+ */
+export function TrainerBoard({ puzzle, dueCount }: { puzzle: PuzzleUI; dueCount: number }) {
+  const router = useRouter();
+
+  const solucion = useMemo(
+    () => (puzzle.solutionLine?.length ? puzzle.solutionLine : [puzzle.bestUci]),
+    [puzzle.solutionLine, puzzle.bestUci],
+  );
+  const orientacion = puzzle.myColor ?? (puzzle.fen.split(' ')[1] === 'b' ? 'black' : 'white');
+
+  const [game] = useState(() => new Chess(puzzle.fen));
+  const [position, setPosition] = useState(puzzle.fen);
+  const [paso, setPaso] = useState(0);
+  const [estado, setEstado] = useState<Estado>('jugando');
+  const [intentos, setIntentos] = useState(0);
+  const [pistaUsada, setPistaUsada] = useState(false);
+  const [aviso, setAviso] = useState<string | null>(null);
+  const [flechas, setFlechas] = useState<Array<{ startSquare: string; endSquare: string; color: string }>>([]);
+
+  // El cronometro arranca al montar, no durante el render: `performance.now()` es impuro y en
+  // render puede correr mas de una vez, lo que daria tiempos inventados.
+  const iniciadoRef = useRef(0);
+  const intentoRef = useRef<Promise<void> | null>(null);
+  useEffect(() => {
+    iniciadoRef.current = performance.now();
+  }, []);
+
+  const explicacion = useMemo(
+    () =>
+      explicarBlunder({
+        fen: puzzle.fen,
+        playedUci: puzzle.playedUci,
+        bestUci: puzzle.bestUci,
+        refutationLine: puzzle.refutationLine,
+        solutionLine: puzzle.solutionLine,
+        cpLoss: puzzle.cpLoss,
+      }),
+    [puzzle],
+  );
+
+  /** Reproduce la linea de refutacion sobre el tablero: ver el castigo es la explicacion. */
+  const mostrarRefutacion = useCallback(() => {
+    const tablero = new Chess(puzzle.fen);
+    const jugar = (uci: string): boolean => {
+      try {
+        tablero.move({
+          from: uci.slice(0, 2),
+          to: uci.slice(2, 4),
+          promotion: uci.length > 4 ? uci.slice(4) : undefined,
+        });
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    if (!jugar(puzzle.playedUci)) return;
+    setPosition(tablero.fen());
+    setFlechas([
+      { startSquare: puzzle.playedUci.slice(0, 2), endSquare: puzzle.playedUci.slice(2, 4), color: '#d03b3b' },
+    ]);
+
+    const linea = puzzle.refutationLine ?? [];
+    linea.forEach((uci, i) => {
+      setTimeout(
+        () => {
+          if (!jugar(uci)) return;
+          setPosition(tablero.fen());
+          setFlechas([{ startSquare: uci.slice(0, 2), endSquare: uci.slice(2, 4), color: '#d03b3b' }]);
+        },
+        600 * (i + 1),
+      );
+    });
+  }, [puzzle.fen, puzzle.playedUci, puzzle.refutationLine]);
+
+  const cerrar = useCallback(
+    (resuelto: boolean, playedUci: string, numeroIntento: number) => {
+      setEstado(resuelto ? 'resuelto' : 'fallado');
+      intentoRef.current = recordAttempt({
+        puzzleId: puzzle.id,
+        playedUci,
+        correct: resuelto,
+        msTaken: Math.round(performance.now() - iniciadoRef.current),
+        attemptNo: numeroIntento,
+        hintUsed: pistaUsada,
+        cierra: true,
+      });
+      if (!resuelto) mostrarRefutacion();
+    },
+    [puzzle.id, pistaUsada, mostrarRefutacion],
+  );
+
+  const onPieceDrop = useCallback(
+    ({ sourceSquare, targetSquare }: { sourceSquare: string; targetSquare: string | null }): boolean => {
+      if (estado !== 'jugando' || !targetSquare) return false;
+
+      let jugada;
+      try {
+        jugada = game.move({ from: sourceSquare, to: targetSquare, promotion: 'q' });
+      } catch {
+        return false;
+      }
+
+      const uci = `${jugada.from}${jugada.to}${jugada.promotion ?? ''}`;
+      const esperada = solucion[paso];
+      const numeroIntento = intentos + 1;
+
+      if (uci !== esperada) {
+        // Reintentar: se deshace la jugada y el tablero vuelve, en vez de quedar bloqueado.
+        game.undo();
+        setIntentos(numeroIntento);
+        setAviso(null);
+        setFlechas([]);
+
+        if (numeroIntento >= MAX_INTENTOS) {
+          cerrar(false, uci, numeroIntento);
+        } else {
+          void recordAttempt({
+            puzzleId: puzzle.id,
+            playedUci: uci,
+            correct: false,
+            msTaken: Math.round(performance.now() - iniciadoRef.current),
+            attemptNo: numeroIntento,
+            hintUsed: pistaUsada,
+            cierra: false,
+          });
+          setAviso(
+            `Esa no. Te ${MAX_INTENTOS - numeroIntento === 1 ? 'queda' : 'quedan'} ${MAX_INTENTOS - numeroIntento} ${
+              MAX_INTENTOS - numeroIntento === 1 ? 'intento' : 'intentos'
+            }.`,
+          );
+        }
+        return false;
+      }
+
+      // Acertaste. Si la linea sigue, responde el rival y te toca la siguiente.
+      setPosition(game.fen());
+      setAviso(null);
+      setFlechas([]);
+      const respuesta = solucion[paso + 1];
+
+      if (respuesta === undefined) {
+        cerrar(true, uci, numeroIntento);
+        setPaso(paso + 1);
+        return true;
+      }
+
+      setTimeout(() => {
+        try {
+          game.move({
+            from: respuesta.slice(0, 2),
+            to: respuesta.slice(2, 4),
+            promotion: respuesta.length > 4 ? respuesta.slice(4) : undefined,
+          });
+          setPosition(game.fen());
+          if (solucion[paso + 2] === undefined) cerrar(true, uci, numeroIntento);
+          else setPaso(paso + 2);
+        } catch {
+          cerrar(true, uci, numeroIntento);
+        }
+      }, 400);
+
+      return true;
+    },
+    [estado, game, solucion, paso, intentos, cerrar, puzzle.id, pistaUsada],
+  );
+
+  const pedirPista = useCallback(() => {
+    const esperada = solucion[paso];
+    if (!esperada) return;
+    setPistaUsada(true);
+    setFlechas([]);
+    setAviso(`Mueve la pieza de ${esperada.slice(0, 2)}.`);
+  }, [solucion, paso]);
+
+  const rendirse = useCallback(() => {
+    cerrar(false, '', intentos + 1);
+  }, [cerrar, intentos]);
+
+  // El intento en vuelo se espera antes de refrescar: si no, el servidor puede devolver el
+  // MISMO ejercicio porque `due_at` todavia no se actualizo.
+  const siguiente = useCallback(() => {
+    void (async () => {
+      if (intentoRef.current) await intentoRef.current;
+      router.refresh();
+    })();
+  }, [router]);
+
+  const tocaMover = estado === 'jugando';
+
+  return (
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,420px)_1fr]">
+      <div>
+        <div className="overflow-hidden rounded-lg">
+          <Chessboard
+            options={{
+              position,
+              onPieceDrop,
+              boardOrientation: orientacion,
+              allowDragging: tocaMover,
+              arrows: flechas,
+              darkSquareStyle: { backgroundColor: '#4a5160' },
+              lightSquareStyle: { backgroundColor: '#b9bfcc' },
+            }}
+          />
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-tenue">
+          <Badge tono="acento">{orientacion === 'white' ? 'Juegan blancas' : 'Juegan negras'}</Badge>
+          {puzzle.theme && NOMBRE_THEME[puzzle.theme] ? <Badge>{NOMBRE_THEME[puzzle.theme]}</Badge> : null}
+          <span>{dueCount} pendientes</span>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        {estado === 'jugando' ? (
+          <div className="space-y-3">
+            <p className="text-sm">
+              Encuentra la jugada que se te escapó.
+              {solucion.length > 1 ? ' La línea sigue después de la primera jugada.' : ''}
+            </p>
+            {aviso ? (
+              <p className="rounded-lg border border-aviso/40 bg-aviso/10 px-3 py-2 text-sm text-aviso">{aviso}</p>
+            ) : null}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-tenue">
+                Intento {intentos + 1} de {MAX_INTENTOS}
+              </span>
+              <Button variante="fantasma" onClick={pedirPista}>
+                Pista
+              </Button>
+              <Button variante="fantasma" onClick={rendirse}>
+                Ver solución
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <PanelExplicacion explicacion={explicacion} puzzle={puzzle} estado={estado} />
+            <Button variante="primario" onClick={siguiente}>
+              Siguiente ejercicio
+            </Button>
+          </>
+        )}
+      </div>
     </div>
   );
 }

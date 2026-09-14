@@ -10,12 +10,21 @@ import { log } from '@/lib/log';
 import { winPct } from '@/lib/analysis/winpct';
 import type { PuzzleStore } from './store';
 
+type LineaMotor = {
+  scoreCp: number | null;
+  mateIn: number | null;
+  bestUci: string | null;
+  /** Linea principal completa. `evaluateMultiPv` la devuelve desde la Fase 6C. */
+  pv?: readonly string[];
+};
+
 export type MultiPvEngine = {
-  evaluateMultiPv(
-    uciMoves: readonly string[],
-    nodes: number,
-    lines: number,
-  ): Promise<Array<{ scoreCp: number | null; mateIn: number | null; bestUci: string | null }>>;
+  evaluateMultiPv(uciMoves: readonly string[], nodes: number, lines: number): Promise<LineaMotor[]>;
+  /**
+   * Una sola linea. Se usa para la posicion DESPUES del blunder: su PV es la refutacion, o sea
+   * como el rival te castigaba, que es el insumo de la explicacion del entrenador.
+   */
+  evaluate(uciMoves: readonly string[], nodes: number): Promise<LineaMotor>;
 };
 
 export type BuildPuzzlesOptions = {
@@ -25,6 +34,11 @@ export type BuildPuzzlesOptions = {
   batchSize: number;
   environment: string;
   trigger: string;
+  /**
+   * 'construir' busca blunders sin ejercicio; 'enriquecer' rellena las lineas de los ejercicios
+   * que ya existen desde antes de la migracion 0007. El resto del camino es identico.
+   */
+  modo?: 'construir' | 'enriquecer';
 };
 
 export type BuildFailure = { gameId: number; ply: number; reason: string };
@@ -65,10 +79,14 @@ export async function runBuildPuzzles(options: BuildPuzzlesOptions): Promise<Bui
   const failures: BuildFailure[] = [];
 
   try {
+    const modo = options.modo ?? 'construir';
     let remaining = options.batchSize;
     for (;;) {
       const lotSize = Math.min(10, Math.max(1, remaining));
-      const candidates = await store.claimBlunderCandidates(lotSize);
+      const candidates =
+        modo === 'enriquecer'
+          ? await store.claimIncompletePuzzles(lotSize)
+          : await store.claimBlunderCandidates(lotSize);
       if (candidates.length === 0) break;
 
       for (const candidate of candidates) {
@@ -91,6 +109,11 @@ export async function runBuildPuzzles(options: BuildPuzzlesOptions): Promise<Bui
 
           const theme = inferTheme({ fenBefore: fen, playedUci: candidate.playedUci, mateIn: best.mateIn });
 
+          // La segunda llamada al motor, y la razon de ser de toda esta fase: el PV de la
+          // posicion DESPUES del blunder es como el rival te castigaba. Sin esto el entrenador
+          // solo puede decir "era otra jugada" y no por que.
+          const refutacion = await engine.evaluate([...uciPrefix, candidate.playedUci], nodes);
+
           await store.insertPuzzle({
             gameId: candidate.gameId,
             ply: candidate.ply,
@@ -101,6 +124,13 @@ export async function runBuildPuzzles(options: BuildPuzzlesOptions): Promise<Bui
             winPctLoss: candidate.winPctLoss,
             isUnique,
             theme,
+            myColor: candidate.myColor,
+            solutionLine: [...(best.pv ?? [best.bestUci])],
+            refutationLine: [...(refutacion.pv ?? [])],
+            evalBestCp: best.scoreCp,
+            evalPlayedCp: refutacion.scoreCp,
+            secondBestUci: second?.bestUci ?? null,
+            secondBestCp: second?.scoreCp ?? null,
           });
           processed += 1;
         } catch (error) {

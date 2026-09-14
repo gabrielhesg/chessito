@@ -21,6 +21,7 @@
     "moves:extract": "tsx --conditions=react-server scripts/extract-moves.ts",
     "analyze": "tsx --conditions=react-server scripts/analyze.ts",
     "puzzles:build": "tsx --conditions=react-server scripts/build-puzzles.ts",
+    "puzzles:enrich": "tsx --conditions=react-server scripts/build-puzzles.ts --enrich",
     "backup:ndjson": "tsx --conditions=react-server scripts/backup-ndjson.ts"
   },
   "dependencies": {

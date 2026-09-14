@@ -13,6 +13,14 @@ on:
         required: false
         default: '200'
         type: string
+      modo:
+        description: 'construir = ejercicios nuevos; enriquecer = rellenar las lineas de los ya creados (migracion 0007)'
+        required: false
+        default: 'construir'
+        type: choice
+        options:
+          - construir
+          - enriquecer
 
 jobs:
   construir:
@@ -55,7 +63,7 @@ jobs:
         id: hilos
         if: steps.secretos.outputs.listos == 'true'
         run: echo "threads=$(( $(nproc) - 1 ))" >> "$GITHUB_OUTPUT"
-      - name: Construir ejercicios
+      - name: Construir o enriquecer ejercicios
         if: steps.secretos.outputs.listos == 'true'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -68,4 +76,9 @@ jobs:
           APP_ENV: prod
           ENGINE_NODES: '800000'
           ENGINE_THREADS: ${{ steps.hilos.outputs.threads }}
-        run: pnpm puzzles:build --batch ${{ inputs.batch || '200' }}
+        run: |
+          if [ "${{ inputs.modo }}" = "enriquecer" ]; then
+            pnpm puzzles:enrich --batch "${{ inputs.batch || '200' }}"
+          else
+            pnpm puzzles:build --batch "${{ inputs.batch || '200' }}"
+          fi

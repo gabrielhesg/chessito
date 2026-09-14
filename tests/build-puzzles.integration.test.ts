@@ -68,19 +68,24 @@ function fakeAnalysisEngine(): AnalysisEngine {
       const sideToMove: 'white' | 'black' = k % 2 === 0 ? 'white' : 'black';
       const targetWhitePerspective = k >= 4 ? 700 : 0;
       const scoreCp = sideToMove === 'white' ? targetWhitePerspective : -targetWhitePerspective;
-      return Promise.resolve({ scoreCp, mateIn: null, bestUci: 'e2e4' });
+      return Promise.resolve({ scoreCp, mateIn: null, bestUci: 'e2e4', pv: ['e2e4'] });
     },
   };
 }
 
-/** Motor MultiPV falso: dos lineas fijas, con la brecha configurable entre la primera y la segunda. */
+/**
+ * Motor MultiPV falso: dos lineas fijas, con la brecha configurable entre la primera y la
+ * segunda. `evaluate` devuelve la linea de refutacion, que es lo que la Fase 6C guarda para
+ * poder explicar por que la jugada fue mala.
+ */
 function fakeMultiPvEngine(gapCp: number): MultiPvEngine {
   return {
     evaluateMultiPv: () =>
       Promise.resolve([
-        { scoreCp: 0, mateIn: null, bestUci: 'g1f3' },
-        { scoreCp: -gapCp, mateIn: null, bestUci: 'b1c3' },
+        { scoreCp: 0, mateIn: null, bestUci: 'g1f3', pv: ['g1f3', 'b8c6', 'f1c4'] },
+        { scoreCp: -gapCp, mateIn: null, bestUci: 'b1c3', pv: ['b1c3'] },
       ]),
+    evaluate: () => Promise.resolve({ scoreCp: -450, mateIn: null, bestUci: 'd8h4', pv: ['d8h4', 'e1e2'] }),
   };
 }
 
@@ -160,6 +165,37 @@ suite('runBuildPuzzles contra Postgres real', () => {
       await client.end();
     }
   }, 30_000);
+
+  it('guarda la linea de solucion y la de refutacion, que es lo que permite explicar el error', async () => {
+    // Sin estas dos columnas el entrenador solo puede decir "era otra jugada": la linea de
+    // refutacion ES como el rival te castigaba (migracion 0007).
+    const client = new Client({ connectionString: url });
+    await client.connect();
+    try {
+      const res = await client.query<{
+        solution_line: string[] | null;
+        refutation_line: string[] | null;
+        my_color: string | null;
+        eval_played_cp: number | null;
+        second_best_uci: string | null;
+      }>(
+        `select p.solution_line, p.refutation_line, p.my_color, p.eval_played_cp, p.second_best_uci
+           from puzzles p join games g on g.id = p.game_id
+          where g.chesscom_uuid = $1`,
+        [UUID],
+      );
+      const fila = res.rows[0];
+      // La linea completa del motor, no solo su primera jugada.
+      expect(fila?.solution_line).toEqual(['g1f3', 'b8c6', 'f1c4']);
+      expect(fila?.refutation_line).toEqual(['d8h4', 'e1e2']);
+      // El color es lo que orienta el tablero: antes se leia y nunca se guardaba.
+      expect(fila?.my_color).toBe('black');
+      expect(fila?.eval_played_cp).toBe(-450);
+      expect(fila?.second_best_uci).toBe('b1c3');
+    } finally {
+      await client.end();
+    }
+  });
 
   it('correrla de nuevo no duplica el ejercicio (idempotencia: no_exists + on conflict)', async () => {
     const segunda = await runBuildPuzzles({
