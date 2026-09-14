@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { listGames, openingNames } from '@/lib/data';
-import { Panel, Tabla, Vacio } from '@/components/ui';
+import { formatTimeControl } from '@/lib/chess/timecontrol';
+import { Panel, SortableTh, Tabla, Vacio } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,26 +30,35 @@ function Filtro({ href, activo, children }: { href: string; activo: boolean; chi
   );
 }
 
+const SORT_COLUMNAS = ['end_time', 'my_rating'] as const;
+type SortColumna = (typeof SORT_COLUMNAS)[number];
+function esSortColumna(value: string | undefined): value is SortColumna {
+  return SORT_COLUMNAS.includes(value as SortColumna);
+}
+
 export default async function RegistroPage({
   searchParams,
 }: {
-  searchParams: Promise<{ clase?: string; color?: string; resultado?: string }>;
+  searchParams: Promise<{ clase?: string; color?: string; resultado?: string; sort?: string; dir?: string }>;
 }) {
   const params = await searchParams;
   const timeClass = CLASES.find((c) => c === params.clase);
   const color = esColor(params.color) ? params.color : undefined;
   const result = esResultado(params.resultado) ? params.resultado : undefined;
+  const sort: SortColumna = esSortColumna(params.sort) ? params.sort : 'end_time';
+  const dir: 'asc' | 'desc' = params.dir === 'asc' ? 'asc' : 'desc';
 
-  const { rows, total } = await listGames({ timeClass, color, result, limit: 100 });
+  const { rows, total } = await listGames({ timeClass, color, result, sort, dir, limit: 100 });
   const nombres = await openingNames(rows.map((r) => r.opening_id).filter((id): id is string => id !== null));
 
   const link = (patch: Record<string, string | undefined>): string => {
     const next = new URLSearchParams();
-    const merged = { clase: timeClass, color, resultado: result, ...patch };
+    const merged = { clase: timeClass, color, resultado: result, sort, dir, ...patch };
     for (const [key, value] of Object.entries(merged)) if (value) next.set(key, value);
     const query = next.toString();
     return query ? `/registro?${query}` : '/registro';
   };
+  const sortLink = (nextSort: string, nextDir: 'asc' | 'desc'): string => link({ sort: nextSort, dir: nextDir });
 
   return (
     <div className="space-y-6">
@@ -79,7 +89,19 @@ export default async function RegistroPage({
         {rows.length === 0 ? (
           <Vacio>Ninguna partida con estos filtros.</Vacio>
         ) : (
-          <Tabla headers={['Fecha', 'Tipo', 'Color', 'Resultado', 'Final', 'Rival', 'Rating', 'Apertura', '']}>
+          <Tabla
+            headers={[
+              <SortableTh key="fecha" label="Fecha" sortKey="end_time" currentSort={sort} currentDir={dir} href={sortLink} />,
+              'Tipo',
+              'Color',
+              'Resultado',
+              'Final',
+              'Rival',
+              <SortableTh key="rating" label="Rating" sortKey="my_rating" currentSort={sort} currentDir={dir} href={sortLink} />,
+              'Apertura',
+              '',
+            ]}
+          >
             {rows.map((g) => (
               <tr key={g.id} className="border-b border-[var(--color-borde)]/50">
                 <td className="py-1.5 pr-3 tabular-nums">
@@ -89,7 +111,7 @@ export default async function RegistroPage({
                     timeStyle: 'short',
                   })}
                 </td>
-                <td className="py-1.5 pr-3">{g.time_class} {g.time_control}</td>
+                <td className="py-1.5 pr-3">{g.time_class} {formatTimeControl(g.time_control)}</td>
                 <td className="py-1.5 pr-3">{g.my_color === 'white' ? 'blancas' : 'negras'}</td>
                 <td
                   className={`py-1.5 pr-3 ${

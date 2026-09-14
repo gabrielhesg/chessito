@@ -1,34 +1,55 @@
-import { openingPerformance, analysisCoverage, openingResolution } from '@/lib/data';
-import { Muestra, Panel, Tabla, Vacio, filaAtenuada, pct } from '@/components/ui';
+import { openingPerformance, analysisCoverage } from '@/lib/data';
+import { Ayuda, Panel, Rendimiento, SortableTh, Tabla, Vacio, filaAtenuada } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
+
+type SortKey = 'wilson' | 'n' | 'name';
+
+const SORT_KEYS: SortKey[] = ['wilson', 'n', 'name'];
+
+function esSortKey(value: string | undefined): value is SortKey {
+  return SORT_KEYS.includes(value as SortKey);
+}
 
 /**
  * Pregunta 1: contra que aperturas pierde y con que color.
  *
- * El grupo "Sin resolver" se muestra a proposito: `v_opening_performance` usa LEFT JOIN, y si
- * ese grupo crece hay un bug en el cargador de aperturas. Con INNER JOIN seria invisible.
+ * El grupo "Sin resolver" (opening_id null) sigue apareciendo a proposito: `v_opening_performance`
+ * usa LEFT JOIN, y si ese grupo crece hay un bug en el cargador de aperturas. Pero el aviso de
+ * ese chequeo vive en /salud, junto con el resto de calidad de datos (v_data_quality), no aca:
+ * esta pantalla responde "contra que pierdo", no "esta sano el pipeline".
  */
-export default async function AperturasPage() {
-  // El conteo de "Sin resolver" sale de `v_opening_resolution`, no de sumar filas en
-  // TypeScript: es la misma cuenta que vigila el chequeo `aperturas_sin_resolver`.
-  const [filas, cobertura, resolucion] = await Promise.all([
-    openingPerformance(),
-    analysisCoverage(),
-    openingResolution(),
-  ]);
+export default async function AperturasPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ sort?: string; dir?: string }>;
+}) {
+  const params = await searchParams;
+  const sort: SortKey = esSortKey(params.sort) ? params.sort : 'wilson';
+  const dir: 'asc' | 'desc' = params.dir === 'desc' ? 'desc' : 'asc';
 
-  const sinResolver = resolucion?.n_unresolved ?? 0;
-  const total = resolucion?.n_games ?? 0;
-  const pctSinResolver = (resolucion?.pct_unresolved ?? 0) * 100;
+  const [filas, cobertura] = await Promise.all([openingPerformance(), analysisCoverage()]);
+
   const analizadas = cobertura.reduce((s, c) => s + (c.n_analyzed ?? 0), 0);
   const totalPartidas = cobertura.reduce((s, c) => s + (c.n_games ?? 0), 0);
+
+  const signo = dir === 'asc' ? 1 : -1;
+  const comparar = (
+    a: (typeof filas)[number],
+    b: (typeof filas)[number],
+  ): number => {
+    if (sort === 'n') return signo * ((a.n ?? 0) - (b.n ?? 0));
+    if (sort === 'name') return signo * (a.opening_name ?? '').localeCompare(b.opening_name ?? '');
+    return signo * ((a.score_pct_lower ?? 0) - (b.score_pct_lower ?? 0));
+  };
 
   const porColor = (color: 'white' | 'black') =>
     filas
       .filter((f) => f.my_color === color)
-      .sort((a, b) => (a.score_pct_lower ?? 0) - (b.score_pct_lower ?? 0))
+      .sort(comparar)
       .slice(0, 25);
+
+  const link = (nextSort: string, nextDir: 'asc' | 'desc'): string => `/aperturas?sort=${nextSort}&dir=${nextDir}`;
 
   return (
     <div className="space-y-6">
@@ -37,27 +58,50 @@ export default async function AperturasPage() {
         <p className="mt-1 text-sm text-[var(--color-tenue)]">
           Ordenadas por la cota inferior de Wilson, de peor a mejor. Los cortes con n&lt;20 salen
           atenuados y no llevan recomendacion. La columna de divergencia y el ACPL se llenan en la
-          Fase 3: por ahora hay {analizadas} de {totalPartidas} partidas analizadas.
+          Fase 3: por ahora hay {analizadas} de {totalPartidas} partidas analizadas. El estado del
+          cargador de aperturas (partidas sin resolver por EPD) esta en <a className="underline" href="/salud">Salud</a>.
         </p>
       </header>
-
-      {sinResolver > 0 ? (
-        <p className="rounded border border-[var(--color-aviso)] px-3 py-2 text-sm text-[var(--color-aviso)]">
-          Sin resolver por EPD: {sinResolver} de {total} partidas ({pctSinResolver.toFixed(2)}%).
-          Si esto crece, hay un bug en el cargador de aperturas.
-        </p>
-      ) : null}
 
       {(['white', 'black'] as const).map((color) => (
         <Panel
           key={color}
           title={color === 'white' ? 'Con blancas' : 'Con negras'}
-          subtitle="Peores primero"
+          subtitle="Peores primero. Click en un encabezado para reordenar."
         >
           {porColor(color).length === 0 ? (
             <Vacio>Sin datos todavia.</Vacio>
           ) : (
-            <Tabla headers={['Apertura', 'ECO', 'Tipo', 'n', 'Rendimiento', 'Wilson', 'Divergencia']}>
+            <Tabla
+              headers={[
+                <SortableTh key="name" label="Apertura" sortKey="name" currentSort={sort} currentDir={dir} href={link} />,
+                <span key="eco">
+                  ECO
+                  <Ayuda>
+                    Código estándar de apertura (Encyclopaedia of Chess Openings). Chessito no
+                    agrupa por este código porque mezcla líneas muy distintas — se muestra solo
+                    como referencia.
+                  </Ayuda>
+                </span>,
+                'Tipo',
+                <span key="rendimiento" className="inline-flex items-center">
+                  <SortableTh label="Rendimiento" sortKey="wilson" currentSort={sort} currentDir={dir} href={link} />
+                  <Ayuda>
+                    El número grande es la cota inferior de Wilson: con pocas partidas el
+                    porcentaje bruto puede estar inflado por suerte, y Wilson lo corrige a la
+                    baja. Se usa para ordenar y comparar, no es tu porcentaje real de victorias.
+                    Debajo, el porcentaje bruto y el número de partidas de la muestra (n).
+                  </Ayuda>
+                </span>,
+                <span key="divergencia">
+                  Divergencia
+                  <Ayuda>
+                    La jugada (ply) donde tu evaluación empezó a caer de forma sostenida en esta
+                    apertura, según el motor. Más bajo = te desvías antes de la teoría.
+                  </Ayuda>
+                </span>,
+              ]}
+            >
               {porColor(color).map((f) => {
                 const n = f.n ?? 0;
                 return (
@@ -68,11 +112,9 @@ export default async function AperturasPage() {
                     <td className="py-1.5 pr-3">{f.opening_name}</td>
                     <td className="py-1.5 pr-3 tabular-nums">{f.eco ?? '—'}</td>
                     <td className="py-1.5 pr-3">{f.time_class}</td>
-                    <td className="py-1.5 pr-3 tabular-nums">
-                      <Muestra n={n} />
+                    <td className="py-1.5 pr-3">
+                      <Rendimiento pctValue={f.score_pct} wilson={f.score_pct_lower} n={n} />
                     </td>
-                    <td className="py-1.5 pr-3 tabular-nums">{pct(f.score_pct)}</td>
-                    <td className="py-1.5 pr-3 tabular-nums">{pct(f.score_pct_lower)}</td>
                     <td className="py-1.5 pr-3 tabular-nums">
                       {f.median_divergence_ply === null ? '—' : `ply ${Math.round(f.median_divergence_ply)}`}
                     </td>

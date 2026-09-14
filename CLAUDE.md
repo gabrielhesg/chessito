@@ -467,6 +467,51 @@ sigue con la plantilla lista pero sin completar — es un ritual manual de Gabri
 automatice. El backfill real contra producción (`puzzles:build`) no se corrió como parte de esta
 fase: se dispara después de mergear, igual que se hizo con `moves` y `analyze`.
 
+## Estado al terminar la Fase 5
+
+Rediseño de UX sobre el backend ya terminado (Fases 1-4), a partir de problemas concretos de uso
+en el navegador, no de estética: tablas que no se podían ordenar ni filtrar, jerga sin explicar
+(`n=`, "Wilson", "ECO", "Divergencia"), un aviso de calidad de datos mezclado en `/aperturas`, y
+el control de tiempo mostrado en el formato crudo de la API (`"120+1"`) en vez de la notación que
+todo jugador ya conoce (`"2+1"`). Sin migración nueva: es una capa sobre las mismas vistas SQL.
+
+| Pieza | Dónde |
+|---|---|
+| Columna ordenable como link, no botón de cliente | `SortableTh` en `components/ui.tsx` |
+| Tooltip real (tap-friendly, sin JS) | `Ayuda` en `components/ui.tsx`, con `<details>/<summary>` |
+| Celda de rendimiento colapsada (Wilson grande, bruto y n chicos debajo) | `Rendimiento` en `components/ui.tsx` |
+| Control de tiempo en notación reconocible | `formatTimeControl` en `lib/chess/timecontrol.ts` |
+
+**El orden y los filtros son estado en la URL, no un componente de cliente.** Mismo patrón que ya
+usaba `/registro` para sus filtros de botón (`Filtro` → `<Link href=...>`): se generalizó a
+`SortableTh`, que arma un link con `?sort=X&dir=Y` nuevo. La página recibe `searchParams`, valida
+el valor contra una lista blanca fija (nunca se interpola el nombre de columna en la consulta), y
+ordena. Esto respeta la convención del proyecto ("todo acceso a datos es del lado servidor") sin
+convertir `/aperturas`, `/` o `/registro` en componentes de cliente: una navegación normal
+re-renderiza el Server Component con el nuevo orden. `listGames` (`lib/data.ts`) ganó `sort`/`dir`
+resueltos en la consulta a PostgREST; `openingPerformance` y `monthlyActivity` ya traían pocas
+filas (≤200/≤24) y se ordenan en el array ya traído, sin tocar `lib/data.ts`.
+
+**`Muestra` (el `n=15 ·` con `title=`) se eliminó, no se parcheó.** `title=` no abre con tap en
+celular, que es como Gabriel usa la app la mayor parte del tiempo. En las tablas con Wilson
+(`/aperturas`, `/`, `/ritmo`) el reemplazo es `Rendimiento`, que ya incluye `n` como parte de la
+misma celda. En las tablas sin Wilson (`/errores`, `/reloj`, solo cuentan jugadas o partidas) el
+reemplazo es mostrar el número liso en la celda y mover la explicación del umbral de 20 al
+encabezado de columna, con `Ayuda`.
+
+**El aviso "Sin resolver por EPD" salió de `/aperturas`.** Es un chequeo de calidad de datos
+(`aperturas_sin_resolver`), y ese chequeo ya vive en `v_data_quality`, que `/salud` ya mostraba
+sin cambios — no hizo falta agregar nada ahí. `/aperturas` perdió la llamada a
+`openingResolution()` y el bloque de alerta; el grupo "Sin resolver" (de `opening_id = null`)
+sigue apareciendo en la tabla como cualquier otra apertura, sin alarma, porque la alarma ahora
+vive donde corresponde.
+
+**`formatTimeControl` no reimplementa la detección de formato, la reusa.** Llama a
+`parseTimeControl` (ya testeado contra los tres formatos y la trampa 5) y solo decide cómo
+mostrar el resultado: minutos+incremento (`"2+1"`), minutos solos (`"10 min"`), y distingue
+`"-"` ("vs coach") de la correspondencia real (`"1/86400"` → "correspondencia") aunque ambos
+compartan `isCorrespondence`. 100% de cobertura, `tests/timecontrol.test.ts`.
+
 ## Convenciones
 
 - Todo acceso a datos es del lado servidor: Server Components y route handlers. Nada de

@@ -1,10 +1,18 @@
 import { moveTimeByPhase, moveTimeByPly, moveTimeDistribution, timeoutMoment } from '@/lib/data';
-import { Muestra, Panel, Tabla, Vacio, filaAtenuada, pct } from '@/components/ui';
+import { Ayuda, Panel, Tabla, Vacio, filaAtenuada, pct } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 
 const NOMBRE_FASE: Record<number, string> = { 0: 'Apertura', 1: 'Medio juego', 2: 'Final' };
 const ORDEN_BUCKET = ['<3s', '3-10s', '10-30s', '>30s'] as const;
+
+const AYUDA_N = (
+  <Ayuda>
+    Número de jugadas o partidas en este corte. Bajo 20 la fila sale atenuada: con pocas
+    observaciones el patrón puede ser casualidad.
+  </Ayuda>
+);
+const COL_N = <span key="n" className="inline-flex items-center">n{AYUDA_N}</span>;
 
 function segundos(ms: number | null): string {
   if (ms === null) return '—';
@@ -42,14 +50,14 @@ export default async function RelojPage() {
         {porFase.length === 0 ? (
           <Vacio>Sin jugadas extraidas todavia. Corre `pnpm moves:extract`.</Vacio>
         ) : (
-          <Tabla headers={['Fase', 'n', 'Tiempo promedio', '% bajo 3s (Wilson)']}>
+          <Tabla headers={['Fase', COL_N, 'Tiempo promedio', '% bajo 3s (Wilson)']}>
             {porFase.map((f) => {
               const n = f.n ?? 0;
               const fase = f.phase ?? 0;
               return (
                 <tr key={fase} className={`border-b border-[var(--color-borde)]/50 ${filaAtenuada(n)}`}>
                   <td className="py-1.5 pr-3">{NOMBRE_FASE[fase] ?? fase}</td>
-                  <td className="py-1.5 pr-3 tabular-nums"><Muestra n={n} /></td>
+                  <td className="py-1.5 pr-3 tabular-nums">{n}</td>
                   <td className="py-1.5 pr-3 tabular-nums">{segundos(f.avg_move_time_ms)}</td>
                   <td className="py-1.5 pr-3 tabular-nums">{pct(f.pct_under_3s_lower)}</td>
                 </tr>
@@ -76,14 +84,14 @@ export default async function RelojPage() {
                   <h3 className="mb-1 text-xs uppercase tracking-wide text-[var(--color-tenue)]">
                     {NOMBRE_FASE[fase]}
                   </h3>
-                  <Tabla headers={['Rango', 'n', '% de la fase']}>
+                  <Tabla headers={['Rango', COL_N, '% de la fase']}>
                     {ORDEN_BUCKET.map((bucket) => {
                       const fila = filas.find((f) => f.time_bucket === bucket);
                       const n = fila?.n ?? 0;
                       return (
                         <tr key={bucket} className={`border-b border-[var(--color-borde)]/50 ${filaAtenuada(n)}`}>
                           <td className="py-1.5 pr-3">{bucket}</td>
-                          <td className="py-1.5 pr-3 tabular-nums"><Muestra n={n} /></td>
+                          <td className="py-1.5 pr-3 tabular-nums">{n}</td>
                           <td className="py-1.5 pr-3 tabular-nums">{pct(total > 0 ? n / total : null)}</td>
                         </tr>
                       );
@@ -104,13 +112,13 @@ export default async function RelojPage() {
           <Vacio>Sin jugadas extraidas todavia.</Vacio>
         ) : (
           <div className="overflow-x-auto">
-            <Tabla headers={['Ply', 'n', 'Promedio', 'Mediana']}>
+            <Tabla headers={['Ply', COL_N, 'Promedio', 'Mediana']}>
               {porJugada.map((p) => {
                 const n = p.n ?? 0;
                 return (
                   <tr key={p.ply} className={`border-b border-[var(--color-borde)]/50 ${filaAtenuada(n)}`}>
                     <td className="py-1.5 pr-3 tabular-nums">{p.ply}</td>
-                    <td className="py-1.5 pr-3 tabular-nums"><Muestra n={n} /></td>
+                    <td className="py-1.5 pr-3 tabular-nums">{n}</td>
                     <td className="py-1.5 pr-3 tabular-nums">{segundos(p.avg_move_time_ms)}</td>
                     <td className="py-1.5 pr-3 tabular-nums">{segundos(p.median_move_time_ms)}</td>
                   </tr>
@@ -128,14 +136,14 @@ export default async function RelojPage() {
         {timeouts.length === 0 ? (
           <Vacio>Sin derrotas por tiempo registradas todavia.</Vacio>
         ) : (
-          <Tabla headers={['Fase', 'n', 'Ply promedio de la ultima jugada']}>
+          <Tabla headers={['Fase', COL_N, 'Ply promedio de la ultima jugada']}>
             {timeouts.map((t) => {
               const n = t.n_games ?? 0;
               const fase = t.phase ?? 0;
               return (
                 <tr key={fase} className={`border-b border-[var(--color-borde)]/50 ${filaAtenuada(n)}`}>
                   <td className="py-1.5 pr-3">{NOMBRE_FASE[fase] ?? fase}</td>
-                  <td className="py-1.5 pr-3 tabular-nums"><Muestra n={n} /></td>
+                  <td className="py-1.5 pr-3 tabular-nums">{n}</td>
                   <td className="py-1.5 pr-3 tabular-nums">{t.avg_ply ?? '—'}</td>
                 </tr>
               );

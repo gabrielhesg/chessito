@@ -238,6 +238,9 @@ export type GameFilters = {
   color?: 'white' | 'black';
   result?: 'win' | 'loss' | 'draw';
   limit?: number;
+  /** Lista blanca fija: nunca se interpola un nombre de columna llegado del usuario. */
+  sort?: 'end_time' | 'my_rating';
+  dir?: 'asc' | 'desc';
 };
 
 export type GameListRow = Pick<
@@ -259,6 +262,9 @@ export type GameListRow = Pick<
 >;
 
 export async function listGames(filters: GameFilters): Promise<{ rows: GameListRow[]; total: number }> {
+  const sortColumn = filters.sort ?? 'end_time';
+  const ascending = filters.dir === 'asc';
+
   let query = supabaseAdmin()
     .from('games')
     .select(
@@ -266,7 +272,7 @@ export async function listGames(filters: GameFilters): Promise<{ rows: GameListR
       { count: 'exact' },
     )
     .eq('rules', 'chess')
-    .order('end_time', { ascending: false })
+    .order(sortColumn, { ascending })
     .limit(filters.limit ?? 100);
 
   if (filters.timeClass) query = query.eq('time_class', filters.timeClass);
