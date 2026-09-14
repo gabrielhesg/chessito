@@ -20,12 +20,25 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'lcov'],
       // docs/ENGINEERING.md: 80% en la logica de dominio. En app/ no se exige.
-      include: ['lib/chess/**/*.ts', 'lib/engine/**/*.ts', 'lib/analysis/**/*.ts'],
-      // store.ts y run.ts hablan con Postgres de verdad: se validan con
-      // tests/analyze.integration.test.ts (que necesita TEST_DB_URL), no con cobertura de
-      // unitarios. Mismo criterio que lib/ingest/{store,run,pg-store,supabase-store}.ts, que
-      // por eso ni siquiera estan en el include de arriba.
-      exclude: ['lib/analysis/store.ts', 'lib/analysis/run.ts'],
+      include: [
+        'lib/chess/**/*.ts',
+        'lib/engine/**/*.ts',
+        'lib/analysis/**/*.ts',
+        'lib/puzzles/**/*.ts',
+        'lib/spaced-repetition/**/*.ts',
+      ],
+      // store.ts y run.ts (analysis y puzzles) hablan con Postgres de verdad: se validan con
+      // los *.integration.test.ts (que necesitan TEST_DB_URL), no con cobertura de unitarios.
+      // Mismo criterio que lib/ingest/{store,run,pg-store,supabase-store}.ts, que por eso ni
+      // siquiera estan en el include de arriba. `actions.ts` habla con Supabase via PostgREST
+      // (mismo criterio que lib/data.ts, que tampoco esta en el include).
+      exclude: [
+        'lib/analysis/store.ts',
+        'lib/analysis/run.ts',
+        'lib/puzzles/store.ts',
+        'lib/puzzles/run.ts',
+        'lib/spaced-repetition/actions.ts',
+      ],
       // Cuenta tambien los archivos que ningun test importa: si no, el umbral se mediria
       // sobre menos archivos de los que parece.
       all: true,

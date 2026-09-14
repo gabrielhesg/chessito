@@ -27,6 +27,7 @@ export type ErrorsByPhase = Views['v_errors_by_phase']['Row'];
 export type ErrorsByMoveTime = Views['v_errors_by_move_time']['Row'];
 export type JobRun = Database['public']['Tables']['job_runs']['Row'];
 export type Game = Database['public']['Tables']['games']['Row'];
+export type Puzzle = Database['public']['Tables']['puzzles']['Row'];
 
 function fail(view: string, message: string): never {
   throw new Error(`No se pudo leer ${view}: ${message}`);
@@ -195,6 +196,31 @@ export async function errorsByMoveTime(): Promise<ErrorsByMoveTime[]> {
   const { data, error } = await supabaseAdmin().from('v_errors_by_move_time').select('*');
   if (error) fail('v_errors_by_move_time', error.message);
   return data ?? [];
+}
+
+/** El proximo ejercicio a resolver: el que vence hace mas tiempo, entre los que pasaron el filtro MultiPV. */
+export async function nextDuePuzzle(): Promise<Puzzle | null> {
+  const { data, error } = await supabaseAdmin()
+    .from('puzzles')
+    .select('*')
+    .eq('is_unique', true)
+    .lte('due_at', new Date().toISOString())
+    .order('due_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (error) fail('puzzles', error.message);
+  return data;
+}
+
+/** Cuantos ejercicios estan vencidos ahora, para mostrar el tamaño de la cola en /entrenador. */
+export async function dueCount(): Promise<number> {
+  const { count, error } = await supabaseAdmin()
+    .from('puzzles')
+    .select('id', { count: 'exact', head: true })
+    .eq('is_unique', true)
+    .lte('due_at', new Date().toISOString());
+  if (error) fail('puzzles', error.message);
+  return count ?? 0;
 }
 
 export async function lastJobRuns(limit = 15): Promise<JobRun[]> {

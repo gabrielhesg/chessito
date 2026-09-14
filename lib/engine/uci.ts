@@ -123,6 +123,45 @@ export class UciEngine {
   }
 
   /**
+   * Evalua la posicion con multiples lineas principales (Fase 4: filtro de calidad de
+   * ejercicios, docs/ANALYSIS-SPEC.md). A diferencia de `evaluate()`, deja `MultiPV` en `lines`
+   * en vez de 1, y lo vuelve a dejar en 1 al terminar para no afectar evaluaciones posteriores
+   * con la misma instancia. Devuelve las lineas ordenadas por indice de MultiPV (1 = mejor).
+   */
+  async evaluateMultiPv(uciMoves: readonly string[], nodes: number, lines: number): Promise<EvalResult[]> {
+    this.send(`setoption name MultiPV value ${lines}`);
+    const movesPart = uciMoves.length > 0 ? ` moves ${uciMoves.join(' ')}` : '';
+    this.send(`position startpos${movesPart}`);
+
+    const byRank = new Map<number, { scoreCp: number | null; mateIn: number | null; bestUci: string }>();
+
+    this.send(`go nodes ${nodes}`);
+    await this.readUntil(
+      (line) => line.startsWith('bestmove'),
+      (line) => {
+        const rankMatch = /multipv (\d+)/.exec(line);
+        if (!rankMatch?.[1]) return;
+        const rank = Number.parseInt(rankMatch[1], 10);
+        const pvMatch = / pv (\S+)/.exec(line);
+        if (!pvMatch?.[1]) return;
+        const mateMatch = /score mate (-?\d+)/.exec(line);
+        const cpMatch = /score cp (-?\d+)/.exec(line);
+        if (mateMatch?.[1]) {
+          byRank.set(rank, { scoreCp: null, mateIn: Number.parseInt(mateMatch[1], 10), bestUci: pvMatch[1] });
+        } else if (cpMatch?.[1]) {
+          byRank.set(rank, { scoreCp: Number.parseInt(cpMatch[1], 10), mateIn: null, bestUci: pvMatch[1] });
+        }
+      },
+    );
+
+    this.send('setoption name MultiPV value 1');
+
+    return [...byRank.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([, result]) => result);
+  }
+
+  /**
    * `engine_id` NUNCA se hardcodea: el apt de Debian trae una version bastante mas vieja que
    * el brew de macOS, y hay que poder distinguirlas. Ej: `stockfish-16.1-800k-t7`.
    */
