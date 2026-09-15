@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { describirLinea, explicarBlunder, uciASan } from '@/lib/puzzles/explain';
+import {
+  describirLinea,
+  diferenciaEnPeones,
+  explicarBlunder,
+  logroDeLaSolucion,
+  uciASan,
+} from '@/lib/puzzles/explain';
 
 /**
  * Posiciones reales, no inventadas. La principal es el mate del pastor: despues de
@@ -171,5 +177,47 @@ describe('conceptoDelError', () => {
     });
     expect(exp.concepto?.texto.length).toBeGreaterThan(20);
     expect(exp.concepto?.texto).toMatch(/[a-záéíóú]/);
+  });
+});
+
+describe('describirLinea: la posicion de cada paso', () => {
+  it('devuelve el FEN despues de cada jugada y sus dos casillas', () => {
+    // La misma posicion de arriba: despues de 3...Cf6??, mueven blancas y dan mate con 4.Dxf7#.
+    const linea = describirLinea('r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 5 4', ['h5f7'], false);
+    expect(linea?.pasos[0]?.desde).toBe('h5');
+    expect(linea?.pasos[0]?.hasta).toBe('f7');
+    // Despues de Dxf7# la dama esta en f7 y le tocaria a negras.
+    expect(linea?.pasos[0]?.fen.split(' ')[1]).toBe('b');
+    expect(linea?.pasos[0]?.fen).toContain('Q');
+  });
+});
+
+describe('logroDeLaSolucion', () => {
+  it('sin linea no inventa nada', () => {
+    expect(logroDeLaSolucion(null)).toBeNull();
+  });
+
+  it('una linea que termina en mate se nombra como mate', () => {
+    const linea = describirLinea('r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 5 4', ['h5f7'], true);
+    expect(logroDeLaSolucion(linea)?.tipo).toBe('mate');
+  });
+
+  it('una jugada que no gana material ni da mate evita el castigo', () => {
+    // 1.e4 e5: nadie captura nada y nadie da mate.
+    const linea = describirLinea(
+      'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      ['e2e4', 'e7e5'],
+      true,
+    );
+    const logro = logroDeLaSolucion(linea);
+    expect(logro?.tipo).toBe('evita_el_castigo');
+    expect(logro?.materialGanado).toBe(0);
+  });
+});
+
+describe('diferenciaEnPeones', () => {
+  it('convierte centipeones a peones', () => {
+    expect(diferenciaEnPeones(1320)).toBe(13.2);
+    expect(diferenciaEnPeones(0)).toBe(0);
   });
 });

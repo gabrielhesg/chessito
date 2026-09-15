@@ -1,23 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { casillasDesdeFen } from '@/components/MiniBoard';
 import { lineaEnSan } from '@/components/EnginePanel';
 
 const INICIAL = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-
-describe('casillasDesdeFen', () => {
-  it('devuelve 64 casillas, de a8 a h1', () => {
-    const casillas = casillasDesdeFen(INICIAL);
-    expect(casillas).toHaveLength(64);
-    expect(casillas[0]).toBe('r'); // a8
-    expect(casillas[63]).toBe('R'); // h1
-    expect(casillas[27]).toBe(''); // d5, vacia
-  });
-
-  it('un FEN corrupto no tira: rellena lo que falta', () => {
-    expect(casillasDesdeFen('basura')).toHaveLength(64);
-    expect(casillasDesdeFen('')).toHaveLength(64);
-  });
-});
 
 describe('lineaEnSan', () => {
   it('devuelve el SAN y el FEN DESPUES de cada jugada', () => {
