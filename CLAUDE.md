@@ -644,6 +644,21 @@ portada que va con `.catch(() => null)`: la vista la crea la migración nueva y 
 degrada a su bloque vacío en vez de tumbar la pantalla entera. Aplicar `pnpm db:push` antes de
 desplegar.
 
+**Aplicar una migracion ya no exige un computador.** Era lo unico que quedaba fuera de la regla
+"todo se opera desde el navegador, incluso desde el celular", y costo una pantalla caida:
+`/entrenador` devolvia 500 en produccion despues de mergear la Fase 6, porque
+`puzzle_attempts.attempt_no` (que agrega la 0007) no existia en la base y `puzzleStatsByTheme` la
+pide por nombre — PostgREST responde 400 y la lectura lanza. El workflow `migraciones`
+(`workflow_dispatch`) corre el mismo `pnpm db:push` de siempre, es idempotente, y la rama decide
+el ambiente igual que en `ingest.yml`.
+
+**Una pagina no se cae por una lectura de adorno.** En `/entrenador` las cuatro lecturas iban en
+un `Promise.all`, asi que el 400 de arriba se llevaba la pagina entera aunque el ejercicio se
+pudiera servir perfectamente. Ahora las secundarias (puntos de la sesion, barras de patron) se
+caen solas y dejan el error en los logs; la del ejercicio sigue siendo fatal a proposito, porque
+sin ejercicio no hay pagina y un 500 con el error real es mas util que una pantalla que dice
+"no hay ejercicios pendientes" cuando si los hay.
+
 **Verificado en el navegador, a 1280px y a 400px**, con el mismo arnés temporal de la Fase 6
 (`app/preview/page.tsx` + `preview` en el matcher del middleware, ambos revertidos después).
 `scrollWidth` calza con `innerWidth` en las dos anchuras. Salieron de ahí tres arreglos: las tres
@@ -682,7 +697,7 @@ Cada uno se agrega a `package.json` en el fase que lo crea.
 | Comando | Archivo | Milestone |
 |---|---|---|
 | `pnpm dev` | Next.js | Fase 1 |
-| `pnpm db:push` | `scripts/db-push.ts`, aplica migraciones en orden y lleva la cuenta en `schema_migrations`. Acepta `--env dev`, `--env prod` y `--db-url`. Primero dev, siempre | Fase 1 |
+| `pnpm db:push` | `scripts/db-push.ts`, aplica migraciones en orden y lleva la cuenta en `schema_migrations`. Acepta `--env dev`, `--env prod` y `--db-url`. Primero dev, siempre. Tambien es el workflow `migraciones`, para operar sin terminal | Fase 1 |
 | `pnpm db:types` | `scripts/db-types.ts`. Con `--env` usa el CLI oficial de Supabase; con `--db-url` introspecciona cualquier Postgres (el CLI necesita Docker y no siempre hay) | Fase 1 |
 | `pnpm openings:load` | `scripts/load-openings.ts`, carga los TSV de Lichess. Acepta `--from-dir` donde la red bloquea raw.githubusercontent.com. Tambien es el workflow `openings`, para operar sin terminal | Fase 1 |
 | `pnpm ingest` | `scripts/ingest.ts`, mismo `runIngest` que la ruta de cron. `--full` para todo el histórico | Fase 1 |
