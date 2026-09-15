@@ -1,13 +1,26 @@
-import { dueCount, nextDuePuzzle, puzzleAt, puzzleStatsByTheme, sessionToday } from '@/lib/data';
+import { conceptosFallados, dueCount, nextDuePuzzle, puzzleAt, sessionToday } from '@/lib/data';
+import { TEXTO_CONCEPTO, type Concepto } from '@/lib/puzzles/explain';
 import { Ayuda, EmptyState, Pagina } from '@/components/ui';
 import { TrainerBoard } from '@/components/TrainerBoard';
 
 export const dynamic = 'force-dynamic';
 
-const NOMBRE_THEME: Record<string, string> = {
-  pieza_colgada: 'Pieza colgada',
+/**
+ * El nombre corto de cada concepto. Estan TODOS, incluidos los viejos: `puzzle_attempts.concepto`
+ * guarda miles de filas con los valores anteriores a la Fase 11, y si desaparecieran de aca el
+ * panel dibujaria un hueco por cada intento historico. Lo que no reconozca cae al string crudo.
+ */
+const NOMBRE_CONCEPTO: Record<string, string> = {
+  pieza_colgada: 'Dejar una pieza colgada',
   mate_pasillo: 'Mate del pasillo',
-  permite_horquilla: 'Permite horquilla',
+  permite_horquilla: 'Permitir una horquilla',
+  permite_mate: 'Permitir un mate forzado',
+  pierde_material: 'Perder material',
+  empeora_la_posicion: 'Empeorar la posición',
+  cuelga_la_pieza_movida: 'Mover una pieza a donde te la comen',
+  abandonas_la_defensa: 'Mover al defensor de otra pieza',
+  no_atiendes_la_amenaza: 'No ver la amenaza del rival',
+  permite_una_amenaza: 'Permitir una jugada con amenaza',
 };
 
 /** Cuantos puntos de progreso se dibujan como maximo: los de hoy, mas los que quedan. */
@@ -57,18 +70,20 @@ export default async function EntrenadorPage({
       ? puzzleAt(pedido.gameId, pedido.ply).then((p) => p ?? nextDuePuzzle())
       : nextDuePuzzle(),
     adorno(dueCount(), 0),
-    adorno(puzzleStatsByTheme(), []),
+    adorno(conceptosFallados(), []),
     adorno(sessionToday(), []),
   ]);
 
-  const patrones = porTema
-    .filter((t) => t.intentos >= 3)
-    .map((t) => ({
-      etiqueta: t.theme ? (NOMBRE_THEME[t.theme] ?? t.theme) : 'Sin patrón',
-      pct: (t.aciertos / t.intentos) * 100,
-      titulo: `${t.aciertos} de ${t.intentos} al primer intento`,
-    }))
-    .sort((a, b) => a.pct - b.pct);
+  const maximo = Math.max(1, ...porTema.map((c) => c.intentos));
+  const patrones = porTema.map((c) => ({
+    etiqueta: NOMBRE_CONCEPTO[c.concepto] ?? c.concepto,
+    intentos: c.intentos,
+    ejercicios: c.ejercicios,
+    // La barra es proporcional al peor, no un porcentaje: un porcentaje sin denominador no dice
+    // nada, y eso era justo lo que no se entendia del panel anterior.
+    pct: (c.intentos / maximo) * 100,
+    detalle: TEXTO_CONCEPTO[c.concepto as Concepto] ?? '',
+  }));
 
   const total = Math.max(sesion.length, Math.min(PUNTOS_SESION, sesion.length + pendientes));
 
@@ -90,10 +105,10 @@ export default async function EntrenadorPage({
             <p className="eyebrow">
               Resueltos hoy
               <Ayuda>
-                Ejercicios que cerraste hoy. Verde es resuelto al primer intento y sin pista, que
-                es el mismo criterio con el que la repetición espaciada decide cuándo volver a
-                mostrártelo; rojo es que necesitaste más de un intento. La meta de {PUNTOS_SESION}{' '}
-                es una referencia, no una obligación.
+                Verde es al primer intento y sin pista, que es el mismo criterio con el que la
+                repetición espaciada decide cuándo volver a mostrarte el ejercicio. Por eso un
+                ejercicio que acertaste al tercer intento sale rojo: la app lo sigue considerando
+                pendiente y te lo va a volver a servir.
               </Ayuda>
             </p>
             <p className="mt-1.5 text-[20px] font-semibold tabular-nums">
@@ -113,6 +128,14 @@ export default async function EntrenadorPage({
                 );
               })}
             </div>
+            {/* La explicacion va VISIBLE y no solo detras del tooltip: un "0 / 8" con barritas de
+                colores y sin leyenda no se entiende, y preguntarselo es exactamente lo que paso. */}
+            <p className="mt-1.5 text-[11px] leading-relaxed text-apagado">
+              Un punto por ejercicio cerrado hoy.{' '}
+              <span className="text-bien">Verde</span> es al primer intento,{' '}
+              <span className="text-critico">rojo</span> es que necesitaste más de uno. El{' '}
+              {PUNTOS_SESION} es una referencia, no una obligación.
+            </p>
           </div>
         ) : null
       }

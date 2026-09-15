@@ -665,6 +665,21 @@ tablas, las vistas y las columnas de `puzzles`/`puzzle_attempts`) y `--marcar-ap
 la lista sale de `--revisar`, nunca de adivinar — marcar de mas deja la base sin objetos que el
 codigo espera, y el error aparece despues, en una pagina.
 
+**La adopcion se hizo de verdad recien despues de la Fase 10, y la lista fue `0001,0002`.** Hasta
+ahi `schema_migrations` seguia vacia (la unica corrida verde del workflow habia sido en modo
+`revisar`, que no anota nada), asi que 0007, 0008 y 0009 nunca se aplicaron: por eso
+`puzzles:enrich` moria con `column p.refutation_line does not exist`, que no era un problema suyo
+sino la consecuencia. Marcar SOLO 0001 y 0002 es lo correcto y no es una eleccion prudente al
+azar: **de 0003 en adelante todas las migraciones son idempotentes** (`create or replace
+function`/`view`, `add column if not exists`, `drop index if exists`, y los `revoke` guardados por
+`pg_roles`), asi que volverlas a correr no hace nada. Las unicas que no se pueden repetir son 0001
+y 0002, que usan `create table` y `create type` pelados. Si esto reaparece en otra base, esa es la
+regla, no la lista.
+
+Y `db:push` ya no te deja a oscuras: cuando una migracion falla con un "already exists", el error
+explica que eso suele ser un esquema adoptado y cuales son los tres pasos. El mensaje pelado costo
+tres corridas.
+
 **Aplicar una migracion ya no exige un computador.** Era lo unico que quedaba fuera de la regla
 "todo se opera desde el navegador, incluso desde el celular", y costo una pantalla caida:
 `/entrenador` devolvia 500 en produccion despues de mergear la Fase 6, porque

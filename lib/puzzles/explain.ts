@@ -12,9 +12,9 @@
 import { Chess, type Square } from 'chess.js';
 import { inferTheme, type Theme } from '@/lib/chess/theme';
 
-const VALOR: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
+export const VALOR: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 
-const NOMBRE_PIEZA: Record<string, string> = {
+export const NOMBRE_PIEZA: Record<string, string> = {
   p: 'peón',
   n: 'caballo',
   b: 'alfil',
@@ -62,7 +62,15 @@ export type Concepto =
   | Theme
   | 'permite_mate'
   | 'pierde_material'
-  | 'empeora_la_posicion';
+  | 'empeora_la_posicion'
+  // Los tres que agrega la Fase 11, derivados de la linea de refutacion y no de la estructura.
+  // La union se EXTIENDE y no se reemplaza: `puzzle_attempts.concepto` ya tiene miles de filas
+  // con los valores de arriba, y hoy son la mayoria — si desaparecieran del tipo, el panel de
+  // "los errores que mas repites" dibujaria un hueco por cada intento historico.
+  | 'cuelga_la_pieza_movida'
+  | 'abandonas_la_defensa'
+  | 'no_atiendes_la_amenaza'
+  | 'permite_una_amenaza';
 
 export type ConceptoExplicado = {
   tipo: Concepto;
@@ -70,13 +78,17 @@ export type ConceptoExplicado = {
   texto: string;
 };
 
-const TEXTO_CONCEPTO: Record<Concepto, string> = {
+export const TEXTO_CONCEPTO: Record<Concepto, string> = {
   pieza_colgada: 'Dejaste una pieza sin defensa suficiente: el rival la gana sin dar nada a cambio.',
   mate_pasillo: 'Tu rey quedó encerrado en su propia fila, sin casillas por donde escapar.',
   permite_horquilla: 'Dejaste dos piezas donde un caballo rival las ataca a las dos a la vez.',
   permite_mate: 'Permitiste una secuencia forzada de mate.',
   pierde_material: 'Pierdes material por la fuerza: el rival cobra y tú no recuperas.',
   empeora_la_posicion: 'No pierdes material de inmediato, pero la posición empeora bastante.',
+  cuelga_la_pieza_movida: 'Moviste una pieza a una casilla donde te la pueden comer.',
+  abandonas_la_defensa: 'La pieza que moviste era la que defendía a otra, y al moverla la dejaste sola.',
+  no_atiendes_la_amenaza: 'La amenaza ya estaba en el tablero antes de tu jugada: no la creaste, la dejaste pasar.',
+  permite_una_amenaza: 'Tu jugada le permite al rival una jugada que deja una pieza tuya amenazada.',
 };
 
 /**

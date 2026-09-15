@@ -245,28 +245,29 @@ export async function dueCount(): Promise<number> {
 }
 
 /** Aciertos y fallos por patron tactico: en que tipo de error se tropieza mas seguido. */
-export async function puzzleStatsByTheme(): Promise<
-  Array<{ theme: string | null; intentos: number; aciertos: number }>
+/**
+ * En que conceptos te equivocas mas, contando INTENTOS fallados.
+ *
+ * Lee `v_conceptos_fallados`, que la migracion 0009 creo para este panel y que nunca se habia
+ * conectado: la pagina seguia agrupando por `puzzles.theme`, que es null en casi todos los
+ * ejercicios — por eso el panel decia siempre "Sin patron".
+ *
+ * Cuenta el historial completo, asi que un error que ya corregiste sigue apareciendo. La copia de
+ * la pantalla lo dice ("los que mas has repetido"), para que el numero no se lea como un
+ * diagnostico de hoy.
+ */
+export async function conceptosFallados(): Promise<
+  Array<{ concepto: string; intentos: number; ejercicios: number }>
 > {
   const { data, error } = await supabaseAdmin()
-    .from('puzzle_attempts')
-    .select('correct, attempt_no, puzzles(theme)')
-    .eq('attempt_no', 1)
-    .limit(2000);
-  if (error) fail('puzzle_attempts', error.message);
-
-  const porTema = new Map<string | null, { intentos: number; aciertos: number }>();
-  for (const fila of data ?? []) {
-    const relacion = (fila as { puzzles?: { theme: string | null } | { theme: string | null }[] }).puzzles;
-    const tema = (Array.isArray(relacion) ? relacion[0]?.theme : relacion?.theme) ?? null;
-    const acc = porTema.get(tema) ?? { intentos: 0, aciertos: 0 };
-    acc.intentos += 1;
-    if ((fila as { correct: boolean }).correct) acc.aciertos += 1;
-    porTema.set(tema, acc);
-  }
-  return [...porTema.entries()]
-    .map(([theme, v]) => ({ theme, ...v }))
-    .sort((a, b) => b.intentos - a.intentos);
+    .from('v_conceptos_fallados')
+    .select('concepto, intentos, ejercicios')
+    .order('intentos', { ascending: false })
+    .limit(8);
+  if (error) fail('v_conceptos_fallados', error.message);
+  return (data ?? []).flatMap((f) =>
+    f.concepto ? [{ concepto: f.concepto, intentos: f.intentos ?? 0, ejercicios: f.ejercicios ?? 0 }] : [],
+  );
 }
 
 export async function lastJobRuns(limit = 15): Promise<JobRun[]> {

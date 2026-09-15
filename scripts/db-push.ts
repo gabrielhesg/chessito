@@ -180,10 +180,23 @@ async function main(): Promise<void> {
         await client.query('commit');
       } catch (error) {
         await client.query('rollback');
+        const detalle = error instanceof Error ? error.message : String(error);
+        // "ya existe" casi nunca es un bug de la migracion: es una base cuyo esquema se creo a
+        // mano (pegando el SQL en el editor de Supabase) y por lo tanto con `schema_migrations`
+        // vacia. Sin esta pista el mensaje no dice que hacer, y eso ya costo tres corridas.
+        const pareceEsquemaAdoptado = /already exists|ya existe/i.test(detalle);
         throw new Error(
-          `La migracion ${file} fallo y se revirtio: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
+          `La migracion ${file} fallo y se revirtio: ${detalle}` +
+            (pareceEsquemaAdoptado
+              ? `\n\nEso suele significar que la base YA tiene el esquema pero schema_migrations` +
+                ` esta vacia, porque se creo a mano. No hay que editar la migracion: hay que` +
+                ` adoptar lo que ya esta.\n` +
+                `  1. Corre --revisar para ver que objetos existen.\n` +
+                `  2. Corre --marcar-aplicadas con SOLO las migraciones que crean objetos que ya` +
+                ` viste (marcar de mas deja la base sin cosas que el codigo espera).\n` +
+                `  3. Vuelve a correr sin banderas para aplicar el resto.\n` +
+                `Desde el navegador es el workflow "migraciones" en modo "adoptar".`
+              : ''),
         );
       }
       console.log(`aplicada ${file}`);
