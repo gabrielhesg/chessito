@@ -30,7 +30,14 @@ const NOMBRE_THEME: Record<string, string> = {
   permite_horquilla: 'Permite horquilla',
 };
 
-const MAX_INTENTOS = 3;
+/**
+ * No hay limite de intentos: se prueba hasta resolver. El corte a los tres cerraba el ejercicio
+ * justo cuando el alumno seguia pensando, que es lo contrario de lo que un ejercicio deberia
+ * hacer. Quien quiere ver la respuesta tiene el boton "Ver solucion".
+ *
+ * Esto NO ablanda la repeticion espaciada: SM-2 califica por acierto al PRIMER intento y sin
+ * pista (`lib/spaced-repetition/actions.ts`), asi que insistir no adelanta la proxima aparicion.
+ */
 
 type Estado = 'jugando' | 'resuelto' | 'fallado';
 
@@ -298,24 +305,16 @@ export function TrainerBoard({
         setAviso(null);
         setFlechas([]);
 
-        if (numeroIntento >= MAX_INTENTOS) {
-          cerrar(false, uci, numeroIntento);
-        } else {
-          void recordAttempt({
-            puzzleId: puzzle.id,
-            playedUci: uci,
-            correct: false,
-            msTaken: Math.round(performance.now() - iniciadoRef.current),
-            attemptNo: numeroIntento,
-            hintUsed: pistaUsada,
-            cierra: false,
-          });
-          setAviso(
-            `Esa no. Te ${MAX_INTENTOS - numeroIntento === 1 ? 'queda' : 'quedan'} ${MAX_INTENTOS - numeroIntento} ${
-              MAX_INTENTOS - numeroIntento === 1 ? 'intento' : 'intentos'
-            }.`,
-          );
-        }
+        void recordAttempt({
+          puzzleId: puzzle.id,
+          playedUci: uci,
+          correct: false,
+          msTaken: Math.round(performance.now() - iniciadoRef.current),
+          attemptNo: numeroIntento,
+          hintUsed: pistaUsada,
+          cierra: false,
+        });
+        setAviso('Esa no. Prueba otra.');
         return false;
       }
 
@@ -409,7 +408,7 @@ export function TrainerBoard({
             ) : null}
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs text-tenue">
-                Intento {intentos + 1} de {MAX_INTENTOS}
+                {intentos === 0 ? 'Primer intento' : `Intento ${intentos + 1}`}
               </span>
               <Button variante="fantasma" onClick={pedirPista}>
                 Pista

@@ -168,6 +168,9 @@ export default async function PartidaPage({
         <GameReview
           jugadas={jugadas}
           gameId={game.id}
+          baseSeconds={game.base_seconds}
+          jugadorBlancas={game.my_color === 'white' ? env.CHESSCOM_USERNAME : game.opp_username}
+          jugadorNegras={game.my_color === 'white' ? game.opp_username : env.CHESSCOM_USERNAME}
           orientacion={game.my_color === 'black' ? 'black' : 'white'}
           plyInicial={Number.parseInt(ply ?? '0', 10) || 0}
           resumen={

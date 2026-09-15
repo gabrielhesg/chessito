@@ -5,6 +5,8 @@ import { Chess } from 'chess.js';
 import { Chessboard } from 'react-chessboard';
 import { EvalChart, type PuntoEval } from '@/components/charts/EvalChart';
 import { Badge, Clasificacion, cpAPeones } from '@/components/ui';
+import { BarraVentaja } from '@/components/BarraVentaja';
+import { formatClock, relojesEnPly } from '@/lib/chess/clock';
 
 export type JugadaUI = {
   ply: number;
@@ -32,6 +34,29 @@ function reloj(ms: number | null): string {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
 
+/**
+ * El tablero es cuadrado y ocupa el ancho de su columna; la barra de ventaja tiene que medir lo
+ * mismo. Es un valor fijo porque `react-chessboard` no expone su alto renderizado, y la columna
+ * esta acotada a 520px por el grid.
+ */
+const ALTO_TABLERO = 476;
+
+/** Un reloj, con el nombre del jugador. El del que va a mover va resaltado. */
+function Reloj({ nombre, ms, activo }: { nombre: string; ms: number | null; activo: boolean }) {
+  return (
+    <div className="flex items-baseline justify-between gap-2 py-1.5">
+      <span className="truncate text-[13px] text-texto-suave">{nombre}</span>
+      <span
+        className={`rounded-md px-2 py-0.5 font-mono text-[14px] font-medium tabular-nums ${
+          activo ? 'bg-panel-alto text-texto' : 'text-tenue'
+        }`}
+      >
+        {formatClock(ms)}
+      </span>
+    </div>
+  );
+}
+
 /** "12." para una jugada de blancas, "12..." para una de negras, como en cualquier visor. */
 function numeroDe(ply: number): string {
   return `${Math.ceil(ply / 2)}${ply % 2 === 1 ? '.' : '...'}`;
@@ -51,6 +76,9 @@ export function GameReview({
   plyInicial,
   resumen,
   gameId,
+  baseSeconds,
+  jugadorBlancas,
+  jugadorNegras,
 }: {
   jugadas: readonly JugadaUI[];
   orientacion: 'white' | 'black';
@@ -59,6 +87,10 @@ export function GameReview({
   resumen?: ReactNode;
   /** Para el link a entrenar la posicion, que solo aparece sobre un error tuyo. */
   gameId: number;
+  /** Tiempo base del control de tiempo, para el reloj de quien todavia no ha movido. */
+  baseSeconds: number;
+  jugadorBlancas: string;
+  jugadorNegras: string;
 }) {
   const [ply, setPly] = useState(plyInicial);
 
@@ -137,6 +169,17 @@ export function GameReview({
       ]
     : [];
 
+  // Los dos relojes del momento que se esta mirando. `clock_ms` guarda el reloj de quien acaba
+  // de mover, asi que hay que ir a buscar el ultimo ply de cada bando: eso lo resuelve
+  // `relojesEnPly`, que esta testeado.
+  const relojes = relojesEnPly(
+    jugadas.map((j) => j.clockMs),
+    plyAcotado,
+    baseSeconds,
+  );
+  // Le toca mover a blancas cuando el ply actual es par (0 = posicion inicial).
+  const mueveBlancas = plyAcotado % 2 === 0;
+
   // La tarjeta de la jugada actual toma el color de su clasificacion: coral apagado para un
   // error grave, borde neutro para el resto. El glifo de `Clasificacion` sigue siendo el canal.
   const tonoTarjeta =
@@ -149,18 +192,36 @@ export function GameReview({
   return (
     <div className="grid gap-[26px] lg:grid-cols-[minmax(0,520px)_1fr]">
       <div className="min-w-0">
-        <div className="overflow-hidden rounded-xl">
-          <Chessboard
-            options={{
-              position: fens[plyAcotado],
-              boardOrientation: orientacion,
-              allowDragging: false,
-              arrows: flechas,
-              darkSquareStyle: { backgroundColor: '#769656' },
-              lightSquareStyle: { backgroundColor: '#eeeed2' },
-            }}
+        <Reloj
+          nombre={orientacion === 'white' ? jugadorNegras : jugadorBlancas}
+          ms={orientacion === 'white' ? relojes.negras : relojes.blancas}
+          activo={orientacion === 'white' ? !mueveBlancas : mueveBlancas}
+        />
+        <div className="mt-1.5 flex items-stretch gap-2.5">
+          <BarraVentaja
+            evalCp={jugadaActual?.evalCp ?? null}
+            mateIn={jugadaActual?.mateIn ?? null}
+            orientacion={orientacion}
+            alto={ALTO_TABLERO}
           />
+          <div className="min-w-0 flex-1 overflow-hidden rounded-xl">
+            <Chessboard
+              options={{
+                position: fens[plyAcotado],
+                boardOrientation: orientacion,
+                allowDragging: false,
+                arrows: flechas,
+                darkSquareStyle: { backgroundColor: '#769656' },
+                lightSquareStyle: { backgroundColor: '#eeeed2' },
+              }}
+            />
+          </div>
         </div>
+        <Reloj
+          nombre={orientacion === 'white' ? jugadorBlancas : jugadorNegras}
+          ms={orientacion === 'white' ? relojes.blancas : relojes.negras}
+          activo={orientacion === 'white' ? mueveBlancas : !mueveBlancas}
+        />
 
         <div className="mt-3 flex items-center justify-between gap-2">
           <div className="flex gap-1.5">
