@@ -924,3 +924,42 @@ entorno donde se escribio esto no alcanza `tests.stockfishchess.org`. Se verific
 prueba que el modulo carga, que el puente traduce el protocolo y que el panel dice "Stockfish 19"
 y entrega lineas; lo unico sin comprobar es que las evaluaciones sean correctas, que es
 exactamente lo que aporta la red real.
+
+## Estado al terminar la Fase 12
+
+Ajustes al entrenador salidos de usarlo, mas una regla de analisis que vale para toda la app. Una
+migracion nueva (`0010_conceptos_solo_rapida.sql`).
+
+**El analisis de errores cuenta SOLO partidas de rapida. Los ejercicios se siguen construyendo
+desde todas.** Es una distincion deliberada y no una inconsistencia: en bala y en blitz no hay
+tiempo para calcular, asi que un error ahi dice mas del reloj que de lo que el jugador entiende, y
+mezclarlos mueve la conclusion justo en la pregunta que `/errores` y el panel del entrenador
+existen para responder. Pero una posicion perdida en blitz **entrena igual de bien**, asi que
+seguir sirviendola como ejercicio es correcto. La vista nueva es
+`v_conceptos_fallados_rapida`; `v_conceptos_fallados` (0009) queda intacta, porque nunca se edita
+una migracion aplicada.
+
+**Al cerrar un ejercicio se puede volver a jugar la posicion.** "Probar las lineas en el tablero"
+suelta el tablero para mover por los dos bandos, con la barra de ventaja al lado y el panel del
+motor con sus tres lineas — los mismos `BarraVentaja` y `EnginePanel` de `/partida`, reusados. La
+explicacion se queda visible al lado: se lee y se prueba a la vez, que es lo que la fija.
+
+**Un solo motor, dos trabajos.** Mientras se explica calcula la refutacion; mientras se explora
+analiza la posicion en pantalla con tres lineas. Una sola instancia y no dos, porque cada una es un
+worker con su propia red neuronal. La refutacion ya calculada se **congela en el manejador del
+click** al entrar a explorar (no en un efecto), o la explicacion de al lado se quedaria sin ella.
+
+**La barra de ventaja NO se muestra mientras resuelves**, solo explorando: seria el spoiler de la
+respuesta.
+
+**La leyenda de los puntos de sesion va compacta.** Escrita como frase, estiraba su bloque a lo
+ancho de toda la cabecera y lo desalineaba del numero y de los puntos. Dos chips con su punto de
+color miden lo mismo que el numero y quedan alineados.
+
+**Lo unico que se habia perdido y volvio.** Del panel de patrones se habia caido la tasa de acierto
+al agrupar por concepto en vez de por `theme`. Era correcto quitarla en ese momento — se calculaba
+sobre un agrupamiento que era null en casi todos los ejercicios, o sea un numero sobre "Sin
+patron" — pero ahora que el agrupamiento significa algo, vuelve: `v_conceptos_fallados_rapida`
+cuenta tambien `primeros` y `aciertos`. La regla que deja esto: un dato no se borra porque se vea
+mal, se borra cuando se puede demostrar que no significa nada, y si despues vuelve a significar
+algo, se repone.

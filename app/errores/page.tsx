@@ -27,28 +27,33 @@ const AYUDA_JUGADAS = (
 );
 
 /** Pregunta 3 (blunders reales) y el cierre de la pregunta 4 (tiempo vs errores). */
+/** La unica clase de tiempo que entra al analisis de errores. Ver el comentario de abajo. */
+const CLASE = 'rapid';
+
 export default async function ErroresPage() {
-  const [cobertura, porFase, porTiempo] = await Promise.all([
+  const [cobertura, porFaseTodas, porTiempoTodas] = await Promise.all([
     analysisCoverage(),
     errorsByPhase(),
     errorsByMoveTime(),
   ]);
 
+  // El analisis cuenta SOLO rapida. En bala y en blitz no hay tiempo para calcular: un error ahi
+  // dice mas del reloj que de lo que entiendes, y mezclarlo desplaza la conclusion justo en la
+  // pregunta que esta pagina existe para responder. Los ejercicios del entrenador SI se siguen
+  // construyendo desde todas las partidas: una posicion perdida en blitz entrena igual.
+  const porFase = porFaseTodas.filter((f) => f.time_class === CLASE);
+  const porTiempo = porTiempoTodas.filter((f) => f.time_class === CLASE);
+
   const analizadas = cobertura.reduce((s, c) => s + (c.n_analyzed ?? 0), 0);
   const totales = cobertura.reduce((s, c) => s + (c.n_games ?? 0), 0);
-  const clases = [...new Set(porFase.map((f) => f.time_class).filter((c): c is string => c !== null))].sort();
+  const clases = [CLASE];
 
   // Hay partidas analizadas pero las tablas de abajo salen vacias: algo esta filtrando todas
   // las filas (is_mine, is_book o is_decided). En vez de pedir una consulta a mano, la propia
   // app se responde con el mismo desglose.
   const diagnostico = analizadas > 0 && porFase.length === 0 ? await errorsDiagnostic() : null;
 
-  const totalPorClase = new Map<string, number>();
-  for (const f of porFase) {
-    const clase = f.time_class ?? '';
-    totalPorClase.set(clase, (totalPorClase.get(clase) ?? 0) + (f.n_moves ?? 0));
-  }
-  const claseGrafico = [...totalPorClase.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
+  const claseGrafico = CLASE;
 
   // La pregunta 4 en una sola imagen: tasa de error segun cuanto pensaste la jugada.
   const columnasTiempo: BarraV[] = ORDEN_BUCKET.map((bucket) => {
@@ -87,6 +92,9 @@ export default async function ErroresPage() {
       titulo="Errores"
       subtitulo={
         <>
+          <strong className="text-tenue">Solo partidas de rápida.</strong> En bala y en blitz no
+          hay tiempo para calcular: un error ahí dice más del reloj que de lo que entiendes, y
+          mezclarlo mueve la conclusión justo en la pregunta que esta página existe para responder.
           Basado en {analizadas.toLocaleString('es-CL')} de {totales.toLocaleString('es-CL')} partidas analizadas. Se excluyen las jugadas de libro y las de partidas ya decididas (win% del que mueve sobre 95 o bajo 5): jugar flojo en una partida ganada no cuenta como blunder.
         </>
       }
