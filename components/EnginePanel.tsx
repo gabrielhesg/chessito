@@ -1,24 +1,39 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Chess } from 'chess.js';
 import type { EvalLine } from '@/lib/engine/session';
 import type { EngineStatus } from '@/lib/engine/useBrowserEngine';
 import { toWhitePerspective } from '@/lib/analysis/signs';
 import { cpAPeones } from '@/components/ui';
+import { MiniBoard } from '@/components/MiniBoard';
+
+/** Una jugada de una linea del motor, con la posicion que deja. */
+export type PasoDeLinea = {
+  san: string;
+  /** El FEN DESPUES de la jugada: es lo que dibuja la miniatura. */
+  fen: string;
+  /** Casilla de origen y destino, para marcarlas en la miniatura. */
+  desde: string;
+  hasta: string;
+};
 
 /**
- * Traduce una linea UCI a notacion algebraica desde un FEN. Corta en la primera jugada ilegal
- * en vez de tirar: una PV puede venir truncada.
+ * Traduce una linea UCI a notacion algebraica desde un FEN, devolviendo ademas la posicion que
+ * deja cada jugada. Corta en la primera jugada ilegal en vez de tirar: una PV puede venir
+ * truncada.
+ *
+ * El FEN por paso no es un extra: el tablero ya se estaba reproduciendo aca y se tiraba. Es lo
+ * que permite mostrar la miniatura de cualquier jugada de la linea sin volver a calcular nada.
  */
-function lineaEnSan(fen: string, uciMoves: readonly string[], maximo: number): string[] {
+export function lineaEnSan(fen: string, uciMoves: readonly string[], maximo: number): PasoDeLinea[] {
   let tablero: Chess;
   try {
     tablero = new Chess(fen);
   } catch {
     return [];
   }
-  const sans: string[] = [];
+  const pasos: PasoDeLinea[] = [];
   for (const uci of uciMoves.slice(0, maximo)) {
     try {
       const jugada = tablero.move({
@@ -26,12 +41,17 @@ function lineaEnSan(fen: string, uciMoves: readonly string[], maximo: number): s
         to: uci.slice(2, 4),
         promotion: uci.length > 4 ? uci.slice(4) : undefined,
       });
-      sans.push(jugada.san);
+      pasos.push({
+        san: jugada.san,
+        fen: tablero.fen(),
+        desde: jugada.from,
+        hasta: jugada.to,
+      });
     } catch {
       break;
     }
   }
-  return sans;
+  return pasos;
 }
 
 const MENSAJE: Partial<Record<EngineStatus, string>> = {
@@ -56,6 +76,7 @@ export function EnginePanel({
   encendido,
   onToggle,
   onElegirLinea,
+  orientacion = 'white',
 }: {
   status: EngineStatus;
   lines: readonly EvalLine[];
@@ -67,6 +88,8 @@ export function EnginePanel({
   onToggle: () => void;
   /** Jugar la primera jugada de una linea en el tablero, como variacion. */
   onElegirLinea: (uci: string) => void;
+  /** Con negras abajo, la miniatura tambien se da vuelta. */
+  orientacion?: 'white' | 'black';
 }) {
   const mueveBlancas = fen.split(' ')[1] !== 'b';
 
@@ -84,12 +107,21 @@ export function EnginePanel({
             : linea.scoreCp === null
               ? '—'
               : cpAPeones(toWhitePerspective(linea.scoreCp, mueveBlancas ? 'white' : 'black')),
-        sans: lineaEnSan(fen, linea.pv, 8),
+        pasos: lineaEnSan(fen, linea.pv, 8),
       })),
     [lines, fen, mueveBlancas],
   );
 
   const mensaje = MENSAJE[status];
+
+  // La jugada que se esta mirando, para la miniatura. Se abre con el mouse Y con foco o tap: en
+  // el celular, que es como se usa la app la mayor parte del tiempo, "pasar el mouse" no existe.
+  // La Fase 5 ya borro `Muestra`/`title=` por exactamente esta razon.
+  // `fijado` distingue el hover (se va al salir) del tap o click (se queda hasta tocar otra
+  // jugada o la misma). En el celular un tap dispara `mouseenter`, `focus`, `click` y
+  // `mouseleave` en ese orden: sin `fijado`, el `mouseleave` del final cerraba la miniatura en el
+  // mismo gesto que la abria y no se veia nada.
+  const [mirando, setMirando] = useState<{ paso: PasoDeLinea; fijado: boolean } | null>(null);
 
   return (
     <div className="rounded-xl border border-borde bg-panel px-4 py-3.5">
@@ -116,24 +148,55 @@ export function EnginePanel({
       ) : filas.length === 0 ? (
         <p className="mt-2.5 text-[12.5px] text-tenue">Pensando…</p>
       ) : (
-        <ol className="mt-2.5 flex flex-col gap-1">
+        <ol className="relative mt-2.5 flex flex-col gap-1">
           {filas.map((fila) => (
-            <li key={fila.rank}>
+            <li key={fila.rank} className="flex items-baseline gap-2.5 px-2 py-1">
               <button
                 type="button"
                 onClick={() => fila.primera && onElegirLinea(fila.primera)}
-                className="flex w-full items-baseline gap-2.5 rounded-lg px-2 py-1 text-left transition-colors hover:bg-panel-alto"
+                title="Jugar esta linea en el tablero"
+                className="w-12 shrink-0 rounded font-mono text-[12.5px] font-medium tabular-nums transition-colors hover:text-acento"
               >
-                <span className="w-12 shrink-0 font-mono text-[12.5px] font-medium tabular-nums">
-                  {fila.etiqueta}
-                </span>
-                {/* Sin `uppercase`: en notacion de ajedrez la caja es significativa. */}
-                <span className="truncate font-mono text-[12.5px] text-texto-suave">
-                  {fila.sans.join(' ')}
-                </span>
+                {fila.etiqueta}
               </button>
+              <span className="flex min-w-0 flex-wrap gap-x-1.5 gap-y-0.5">
+                {fila.pasos.map((paso, i) => (
+                  <button
+                    key={`${paso.san}-${i}`}
+                    type="button"
+                    onMouseEnter={() => setMirando((v) => (v?.fijado ? v : { paso, fijado: false }))}
+                    onMouseLeave={() =>
+                      setMirando((v) => (v && !v.fijado && v.paso === paso ? null : v))
+                    }
+                    onFocus={() => setMirando((v) => (v?.fijado ? v : { paso, fijado: false }))}
+                    onBlur={() => setMirando((v) => (v && !v.fijado && v.paso === paso ? null : v))}
+                    onClick={() =>
+                      setMirando((v) =>
+                        v?.fijado && v.paso === paso ? null : { paso, fijado: true },
+                      )
+                    }
+                    /* Sin `uppercase`: en notacion de ajedrez la caja es significativa. */
+                    className="rounded px-0.5 font-mono text-[12.5px] text-texto-suave transition-colors hover:bg-panel-alto hover:text-texto"
+                  >
+                    {paso.san}
+                  </button>
+                ))}
+              </span>
             </li>
           ))}
+
+          {mirando ? (
+            <div className="pointer-events-none absolute right-0 bottom-full z-20 mb-2 rounded-lg border border-borde bg-panel p-1.5 shadow-lg">
+              <MiniBoard
+                fen={mirando.paso.fen}
+                orientacion={orientacion}
+                resaltadas={[mirando.paso.desde, mirando.paso.hasta]}
+              />
+              <p className="mt-1 text-center font-mono text-[11px] text-tenue">
+                {mirando.paso.san}
+              </p>
+            </div>
+          ) : null}
         </ol>
       )}
     </div>

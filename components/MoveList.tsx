@@ -126,11 +126,23 @@ export function MoveList({
 
   // La lista sigue al cursor. Sin esto, saltar al ply 30 desde el grafico deja la lista en la
   // jugada 1 y hay que buscar a mano donde estas.
+  //
+  // Se mueve el `scrollTop` de ESTE contenedor a mano, y nada mas. `scrollIntoView` desplaza
+  // todos los ancestros con scroll, incluida la ventana: por eso al avanzar con las flechas la
+  // pagina entera bajaba y el tablero dejaba de verse completo.
+  //
+  // Se compara con `getBoundingClientRect` y no con `offsetTop`, que es relativo al
+  // `offsetParent`: el contenedor no es `position: relative`, asi que `offsetTop` se resolveria
+  // contra un ancestro cualquiera y el calculo daria cualquier cosa.
   const contenedorRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    contenedorRef.current
-      ?.querySelector(`[data-node-id="${cursorId}"]`)
-      ?.scrollIntoView({ block: 'nearest' });
+    const contenedor = contenedorRef.current;
+    const activo = contenedor?.querySelector(`[data-node-id="${cursorId}"]`);
+    if (!contenedor || !activo) return;
+    const caja = contenedor.getBoundingClientRect();
+    const cajaActivo = activo.getBoundingClientRect();
+    if (cajaActivo.top < caja.top) contenedor.scrollTop += cajaActivo.top - caja.top;
+    else if (cajaActivo.bottom > caja.bottom) contenedor.scrollTop += cajaActivo.bottom - caja.bottom;
   }, [cursorId]);
 
   // Se agrupa de a pares: una fila por numero de jugada.

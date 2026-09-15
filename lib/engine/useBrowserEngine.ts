@@ -4,13 +4,32 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { UciSession, type EvalLine } from '@/lib/engine/session';
 import { createWorkerTransport } from '@/lib/engine/worker-transport';
 
-/** Ruta del motor dentro de `public/`. `middleware.ts` excluye `/stockfish` de su matcher. */
-const RUTA_MOTOR = '/stockfish/stockfish-18-lite-single.js';
-
+/**
+ * Cual de los dos motores de `public/` se carga. `middleware.ts` excluye `/stockfish` de su
+ * matcher.
+ *
+ * NO es una cadena de respaldo, es una eleccion: cada build corre en un caso y NO corre en el
+ * otro, medido en el navegador, no supuesto.
+ *
+ *  - **Stockfish 19** (`@lichess-org/stockfish-web`) crea su memoria compartida (`shared: true`),
+ *    asi que EXIGE que el documento este aislado. Ademas la red neuronal no viene dentro del
+ *    `.wasm`: la baja el workflow `motor`.
+ *  - **Stockfish 18** (el build lite de nmrugg) es autocontenido, pero NO arranca en un documento
+ *    aislado: se queda colgado sin llegar nunca a `uciok`. Salio probandolo con los headers
+ *    puestos, y es la razon por la que `next.config.ts` solo los manda cuando la red neuronal del
+ *    19 esta commiteada — asi nunca queda una pagina aislada sin motor que pueda correr ahi.
+ *
+ * `crossOriginIsolated` es exactamente esa condicion, y el navegador la responde sin adivinar.
+ */
+function rutaDelMotor(): { ruta: string; tipo: WorkerType } {
+  return globalThis.crossOriginIsolated
+    ? { ruta: '/stockfish/sf19-worker.js', tipo: 'module' }
+    : { ruta: '/stockfish/stockfish-18-lite-single.js', tipo: 'classic' };
+}
 /** Si el .wasm no baja, el `fetch` se queda colgado sin rechazar. Sin este tope no hay error. */
 const TIMEOUT_CARGA_MS = 20_000;
 
-/** Un hilo: es el build lite-single. Hash chico porque las busquedas son cortas. */
+/** Un hilo: alcanza de sobra para una posicion a la vez. Hash chico porque las busquedas son cortas. */
 const THREADS = 1;
 const HASH_MB = 16;
 
@@ -148,12 +167,13 @@ export function useBrowserEngine({
 
     const arrancar = async (): Promise<void> => {
       setMotor('cargando');
-      const worker = new Worker(RUTA_MOTOR);
+      const { ruta, tipo } = rutaDelMotor();
+      const worker = new Worker(ruta, { type: tipo });
       const sesion = new UciSession(createWorkerTransport(worker));
       sesionLocal = sesion;
 
-      // El `.wasm` puede quedarse colgado sin rechazar nunca (red caida): sin tope, `cargando`
-      // seria para siempre.
+      // El `.wasm` puede quedarse colgado sin rechazar nunca (red caida, o una red neuronal que
+      // no esta): sin tope, `cargando` seria para siempre.
       const tope = new Promise<never>((_, rechazar) =>
         setTimeout(() => rechazar(new Error('El motor tardo demasiado en cargar')), TIMEOUT_CARGA_MS),
       );
