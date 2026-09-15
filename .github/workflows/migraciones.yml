@@ -1,0 +1,40 @@
+name: migraciones
+
+# Aplica las migraciones pendientes de `supabase/migrations/` en orden, llevando la cuenta en
+# `schema_migrations`. Es `pnpm db:push`, el mismo script de siempre.
+#
+# Existe como workflow por la misma razon que `openings`: el proyecto se opera desde el navegador,
+# incluso desde el celular, y hasta ahora aplicar una migracion era lo UNICO que obligaba a
+# sentarse frente a un computador. Eso ya costo una pantalla caida: `/entrenador` quedo devolviendo
+# 500 despues de mergear la Fase 6 porque `puzzle_attempts.attempt_no` (que agrega la 0007) no
+# existia en la base, y no habia forma de aplicarla sin terminal.
+#
+# Es idempotente: `db:push` salta las que ya estan en `schema_migrations`, asi que volver a
+# correrlo no hace nada. La rama decide el ambiente, igual que en `ingest.yml`: main va a
+# produccion, cualquier otra rama a development.
+on:
+  workflow_dispatch:
+
+jobs:
+  aplicar:
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'development' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Aplicar migraciones
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          CHESSCOM_USERNAME: ${{ secrets.CHESSCOM_USERNAME }}
+          OWNER_EMAIL: ${{ secrets.OWNER_EMAIL }}
+          CRON_SECRET: no-aplica-en-actions
+          APP_ENV: ${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
+        run: pnpm db:push

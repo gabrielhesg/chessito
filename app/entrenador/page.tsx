@@ -14,6 +14,25 @@ const NOMBRE_THEME: Record<string, string> = {
 const PUNTOS_SESION = 8;
 
 /**
+ * Las lecturas de adorno no pueden matar la pagina.
+ *
+ * `puzzleStatsByTheme` y `sessionToday` piden columnas de `puzzle_attempts` que agrega la
+ * migracion 0007 (`attempt_no`, `hint_used`). Contra una base que todavia no la aplico, PostgREST
+ * responde 400 y `fail()` lanza — y como las cuatro lecturas iban juntas en un `Promise.all`, la
+ * pagina entera se caia con un 500 y pantalla en blanco, aunque el ejercicio en si se pudiera
+ * servir perfectamente. El ejercicio ES la pagina; los puntos de sesion y las barras de patron
+ * son adorno, y el adorno se cae solo.
+ */
+async function adorno<T>(lectura: Promise<T>, siFalla: T): Promise<T> {
+  try {
+    return await lectura;
+  } catch (e) {
+    console.error('[entrenador] lectura secundaria fallida:', e);
+    return siFalla;
+  }
+}
+
+/**
  * El entrenador: las posiciones que Gabriel perdio, servidas como ejercicios, en orden de
  * `due_at` (repeticion espaciada SM-2).
  *
@@ -32,12 +51,14 @@ export default async function EntrenadorPage({
     partida && ply ? { gameId: Number.parseInt(partida, 10), ply: Number.parseInt(ply, 10) } : null;
 
   const [puzzle, pendientes, porTema, sesion] = await Promise.all([
+    // Esta sí se deja fallar: sin ejercicio no hay pagina que mostrar, y un 500 con el error real
+    // en los logs es mas util que una pantalla que miente diciendo "no hay ejercicios".
     pedido && Number.isFinite(pedido.gameId) && Number.isFinite(pedido.ply)
       ? puzzleAt(pedido.gameId, pedido.ply).then((p) => p ?? nextDuePuzzle())
       : nextDuePuzzle(),
-    dueCount(),
-    puzzleStatsByTheme(),
-    sessionToday(),
+    adorno(dueCount(), 0),
+    adorno(puzzleStatsByTheme(), []),
+    adorno(sessionToday(), []),
   ]);
 
   const patrones = porTema
