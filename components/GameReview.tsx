@@ -1,14 +1,16 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useReducer, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import { Chess } from 'chess.js';
 import { Chessboard } from 'react-chessboard';
 import { EvalChart, type PuntoEval } from '@/components/charts/EvalChart';
+import type { EvalLine } from '@/lib/engine/session';
 import { Badge, Button, Clasificacion, cpAPeones } from '@/components/ui';
 import { BarraVentaja } from '@/components/BarraVentaja';
 import { EnginePanel } from '@/components/EnginePanel';
 import { MoveList } from '@/components/MoveList';
 import { formatClock, relojesEnPly } from '@/lib/chess/clock';
+import { toWhitePerspective } from '@/lib/analysis/signs';
 import { useBrowserEngine } from '@/lib/engine/useBrowserEngine';
 import {
   addMove,
@@ -66,11 +68,51 @@ function mejorEnSan(fenAntes: string | undefined, bestUci: string | null): strin
 }
 
 /**
- * El tablero es cuadrado y ocupa el ancho de su columna; la barra de ventaja tiene que medir lo
- * mismo. Es un valor fijo porque `react-chessboard` no expone su alto renderizado, y la columna
- * esta acotada a 520px por el grid.
+ * El tablero se dibuja como un grid de `repeat(8, 1fr)` con `aspect-ratio: 1/1` por casilla y SIN
+ * `gap` (`react-chessboard/dist/index.esm.js`, `defaultBoardStyle`). Si su ancho no es multiplo
+ * de 8, los bordes de casilla caen en sub-pixeles y entre las filas asoma el fondo de la pagina:
+ * son las franjas oscuras. Peor: al aparecer o desaparecer la barra de scroll del documento el
+ * ancho cambia un pixel y se re-redondea que casillas miden 61 y cuales 62 — eso es el tablero
+ * "cambiando de tamano" al avanzar jugadas.
+ *
+ * 512 = 8 x 64. En escritorio el ancho es fijo, asi que no hay sub-pixeles ni re-redondeo. En
+ * celular el ancho es fluido y no se puede garantizar el multiplo: ahi lo que salva es el fondo
+ * verde del contenedor (`COLOR_CASILLA_OSCURA`), que hace invisibles las costuras.
  */
-const ALTO_TABLERO = 476;
+const LADO_TABLERO = 512;
+
+/** El mismo verde de `darkSquareStyle`, tambien como fondo del contenedor. */
+const COLOR_CASILLA_OSCURA = '#769656';
+
+// La columna izquierda mide 550px = 512 del tablero + 28 de la barra de ventaja (`w-7`) + 10 del
+// `gap-2.5`, y va fija en la pista del grid. Bajo `lg` el tablero es fluido y `maxWidth` lo acota.
+
+/**
+ * La evaluacion que se muestra en la barra: la guardada en `moves` si la jugada ocurrio de
+ * verdad, y la del motor del navegador si no (que es el caso dentro de una variacion, donde la
+ * tabla `moves` no tiene ninguna fila porque esas jugadas nunca se jugaron).
+ *
+ * El giro de signo NO es opcional: `EvalLine.scoreCp` viene crudo de UCI, en perspectiva del que
+ * mueve, y la barra espera perspectiva de blancas. Sin `toWhitePerspective` la barra se invierte
+ * en silencio en la mitad de las posiciones — la trampa 2 del proyecto.
+ */
+function evaluacionVisible({
+  datos,
+  lineaMotor,
+  fen,
+}: {
+  datos: JugadaUI | null;
+  lineaMotor: EvalLine | undefined;
+  fen: string;
+}): { evalCp: number | null; mateIn: number | null } {
+  if (datos && datos.evalCp !== null) return { evalCp: datos.evalCp, mateIn: datos.mateIn };
+  if (!lineaMotor) return { evalCp: null, mateIn: null };
+  const lado = fen.split(' ')[1] === 'b' ? 'black' : 'white';
+  return {
+    evalCp: lineaMotor.scoreCp === null ? null : toWhitePerspective(lineaMotor.scoreCp, lado),
+    mateIn: lineaMotor.mateIn === null ? null : toWhitePerspective(lineaMotor.mateIn, lado),
+  };
+}
 
 /** "12." para una jugada de blancas, "12..." para una de negras. */
 function numeroDe(ply: number): string {
@@ -195,6 +237,19 @@ export function GameReview({
   const caminoUci = useMemo(() => uciPath(tree, cursorId), [tree, cursorId]);
   const motor = useBrowserEngine({ uciMoves: caminoUci, enabled: motorEncendido });
 
+  // Dentro de una variacion no hay nada guardado en `moves`, asi que el unico puntaje posible es
+  // el del motor. Si hubiera que apretar "Encender" para verlo, no habria puntaje: se enciende
+  // solo la primera vez que se sale de la partida real. Una sola vez — despues el boton manda,
+  // para que apagarlo a proposito no se deshaga al mover otra pieza.
+  const autoEncendidoRef = useRef(false);
+  useEffect(() => {
+    if (enPrincipal || autoEncendidoRef.current) return;
+    autoEncendidoRef.current = true;
+    setMotorEncendido(true);
+  }, [enPrincipal]);
+
+  const evaluacion = evaluacionVisible({ datos, lineaMotor: motor.lines[0], fen: fenActual });
+
   const ir = useCallback((id: NodeId) => despachar({ tipo: 'ir', id }), []);
 
   // Flechas del teclado, que es como se navega una partida en cualquier visor de ajedrez.
@@ -269,7 +324,7 @@ export function GameReview({
         : 'border-borde bg-panel';
 
   return (
-    <div className="grid gap-[26px] lg:grid-cols-[minmax(0,520px)_1fr]">
+    <div className="grid gap-[26px] lg:grid-cols-[550px_minmax(0,1fr)]">
       <div className="min-w-0">
         <Reloj
           nombre={orientacion === 'white' ? jugadorNegras : jugadorBlancas}
@@ -278,12 +333,14 @@ export function GameReview({
         />
         <div className="mt-1.5 flex items-stretch gap-2.5">
           <BarraVentaja
-            evalCp={datos?.evalCp ?? null}
-            mateIn={datos?.mateIn ?? null}
+            evalCp={evaluacion.evalCp}
+            mateIn={evaluacion.mateIn}
             orientacion={orientacion}
-            alto={ALTO_TABLERO}
           />
-          <div className="min-w-0 flex-1 overflow-hidden rounded-xl">
+          <div
+            className="min-w-0 flex-1 overflow-hidden rounded-xl"
+            style={{ backgroundColor: COLOR_CASILLA_OSCURA, maxWidth: LADO_TABLERO }}
+          >
             <Chessboard
               options={{
                 position: fenActual,
@@ -298,7 +355,7 @@ export function GameReview({
                   return false;
                 },
                 arrows: flechas,
-                darkSquareStyle: { backgroundColor: '#769656' },
+                darkSquareStyle: { backgroundColor: COLOR_CASILLA_OSCURA },
                 lightSquareStyle: { backgroundColor: '#eeeed2' },
               }}
             />
@@ -428,6 +485,7 @@ export function GameReview({
           fen={fenActual}
           encendido={motorEncendido}
           onToggle={() => setMotorEncendido((v) => !v)}
+          orientacion={orientacion}
           onElegirLinea={(uci) =>
             despachar({
               tipo: 'jugar',
