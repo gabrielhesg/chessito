@@ -50,16 +50,21 @@ export function MiniBoardPopover({
 }: {
   paso: PasoMirable | null;
   orientacion: 'white' | 'black';
-  posicion?: 'arriba-derecha' | 'arriba-izquierda';
+  /**
+   * De que lado se abre. `abajo-*` existe porque las lineas del entrenador viven en la parte alta
+   * de la pantalla: abriendo hacia arriba la miniatura se sale por el borde superior y queda
+   * cortada.
+   */
+  posicion?: 'arriba-derecha' | 'arriba-izquierda' | 'abajo-izquierda';
   /** Una linea extra bajo el tablero, por ejemplo la evaluacion de esa jugada. */
   extra?: ReactNode;
 }) {
   if (!paso) return null;
   return (
     <div
-      className={`pointer-events-none absolute bottom-full z-20 mb-2 rounded-lg border border-borde bg-panel p-1.5 shadow-lg ${
-        posicion === 'arriba-derecha' ? 'right-0' : 'left-0'
-      }`}
+      className={`pointer-events-none absolute z-20 rounded-lg border border-borde bg-panel p-1.5 shadow-lg ${
+        posicion === 'abajo-izquierda' ? 'top-full mt-2 left-0' : 'bottom-full mb-2'
+      } ${posicion === 'arriba-derecha' ? 'right-0' : 'left-0'}`}
     >
       <MiniBoard fen={paso.fen} orientacion={orientacion} resaltadas={[paso.desde, paso.hasta]} />
       <p className="mt-1 text-center font-mono text-[11px] text-tenue">{paso.san}</p>

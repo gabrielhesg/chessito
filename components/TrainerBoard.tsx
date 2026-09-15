@@ -106,7 +106,7 @@ function LineaJugadas({
           );
         })}
       </ol>
-      <MiniBoardPopover paso={mirando} orientacion={orientacion} posicion="arriba-izquierda" />
+      <MiniBoardPopover paso={mirando} orientacion={orientacion} posicion="abajo-izquierda" />
       <p className="mt-2 text-[11.5px] text-apagado">
         Toca una jugada para verla en el tablero.
       </p>
