@@ -115,8 +115,14 @@ export function EvalChart({
         />
       </svg>
       <div className="mt-1 flex justify-between text-2xs text-apagado">
-        <span>Blancas arriba · negras abajo</span>
-        <span>{blunders.length > 0 ? `${blunders.length} errores graves marcados` : 'Sin errores graves'}</span>
+        <span>Haz click para saltar a esa jugada</span>
+        <span>
+          {blunders.length === 0
+            ? 'Sin errores graves'
+            : blunders.length === 1
+              ? '1 error grave marcado'
+              : `${blunders.length} errores graves marcados`}
+        </span>
       </div>
     </div>
   );

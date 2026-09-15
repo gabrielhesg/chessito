@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { listGames, openingNames } from '@/lib/data';
 import { formatTimeControl } from '@/lib/chess/timecontrol';
-import { Badge, EmptyState, Fila, PageHeader, Panel, SortableTh, Tabla, Td } from '@/components/ui';
+import { Badge, EmptyState, Fila, Pagina, Panel, SortableTh, Tabla, Td } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -64,138 +64,142 @@ export default async function RegistroPage({
   const hayFiltro = Boolean(timeClass || color || result);
 
   return (
-    <div className="space-y-6">
-      <PageHeader titulo="Partidas">
-        {total.toLocaleString('es-CL')} partidas con estos filtros. Se muestran las 100 más
-        recientes.
-      </PageHeader>
+    <Pagina
+      titulo="Partidas"
+      subtitulo={
+        <>
+          {total.toLocaleString('es-CL')} partidas con estos filtros. Se muestran las 100 más recientes.
+        </>
+      }
+    >
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <Filtro href={link({ clase: undefined })} activo={!timeClass}>
+            todas
+          </Filtro>
+          {CLASES.map((c) => (
+            <Filtro key={c} href={link({ clase: c })} activo={timeClass === c}>
+              {c}
+            </Filtro>
+          ))}
+          <span aria-hidden className="mx-1 h-4 w-px bg-borde" />
+          <Filtro href={link({ color: undefined })} activo={!color}>
+            ambos colores
+          </Filtro>
+          <Filtro href={link({ color: 'white' })} activo={color === 'white'}>
+            blancas
+          </Filtro>
+          <Filtro href={link({ color: 'black' })} activo={color === 'black'}>
+            negras
+          </Filtro>
+          <span aria-hidden className="mx-1 h-4 w-px bg-borde" />
+          <Filtro href={link({ resultado: undefined })} activo={!result}>
+            todo resultado
+          </Filtro>
+          {(Object.keys(RESULTADOS) as (keyof typeof RESULTADOS)[]).map((r) => (
+            <Filtro key={r} href={link({ resultado: r })} activo={result === r}>
+              {RESULTADOS[r]}
+            </Filtro>
+          ))}
+        </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Filtro href={link({ clase: undefined })} activo={!timeClass}>
-          todas
-        </Filtro>
-        {CLASES.map((c) => (
-          <Filtro key={c} href={link({ clase: c })} activo={timeClass === c}>
-            {c}
-          </Filtro>
-        ))}
-        <span aria-hidden className="mx-1 h-4 w-px bg-borde" />
-        <Filtro href={link({ color: undefined })} activo={!color}>
-          ambos colores
-        </Filtro>
-        <Filtro href={link({ color: 'white' })} activo={color === 'white'}>
-          blancas
-        </Filtro>
-        <Filtro href={link({ color: 'black' })} activo={color === 'black'}>
-          negras
-        </Filtro>
-        <span aria-hidden className="mx-1 h-4 w-px bg-borde" />
-        <Filtro href={link({ resultado: undefined })} activo={!result}>
-          todo resultado
-        </Filtro>
-        {(Object.keys(RESULTADOS) as (keyof typeof RESULTADOS)[]).map((r) => (
-          <Filtro key={r} href={link({ resultado: r })} activo={result === r}>
-            {RESULTADOS[r]}
-          </Filtro>
-        ))}
+        <Panel>
+          {rows.length === 0 ? (
+            <EmptyState
+              titulo="Ninguna partida con estos filtros"
+              detalle={hayFiltro ? 'Prueba quitando alguno de los filtros de arriba.' : undefined}
+              accion={
+                hayFiltro ? (
+                  <Link href="/registro" className="text-xs text-acento hover:underline">
+                    Quitar todos los filtros
+                  </Link>
+                ) : null
+              }
+            />
+          ) : (
+            <Tabla
+              aligns={['text', 'text', 'text', 'text', 'text', 'num', 'text', 'text']}
+              headers={[
+                <SortableTh
+                  key="fecha"
+                  label="Fecha"
+                  sortKey="end_time"
+                  currentSort={sort}
+                  currentDir={dir}
+                  href={sortLink}
+                />,
+                'Tipo',
+                'Color',
+                'Resultado',
+                'Rival',
+                <SortableTh
+                  key="rating"
+                  label="Rating"
+                  sortKey="my_rating"
+                  currentSort={sort}
+                  currentDir={dir}
+                  href={sortLink}
+                />,
+                'Apertura',
+                '',
+              ]}
+            >
+              {rows.map((g) => (
+                <Fila key={g.id}>
+                  <Td className="whitespace-nowrap tabular-nums text-tenue">
+                    {new Date(g.end_time).toLocaleString('es-CL', {
+                      timeZone: 'America/Santiago',
+                      dateStyle: 'short',
+                      timeStyle: 'short',
+                    })}
+                  </Td>
+                  <Td className="whitespace-nowrap">
+                    <Badge>{formatTimeControl(g.time_control)}</Badge>
+                  </Td>
+                  <Td>
+                    <span
+                      aria-hidden
+                      className={`mr-1.5 inline-block h-2 w-2 rounded-full align-middle ${
+                        g.my_color === 'white' ? 'bg-ventaja-blancas' : 'border border-borde-fuerte bg-ventaja-negras'
+                      }`}
+                    />
+                    {g.my_color === 'white' ? 'blancas' : 'negras'}
+                  </Td>
+                  <Td>
+                    <Badge tono={g.result === 'win' ? 'bien' : g.result === 'loss' ? 'critico' : 'neutro'}>
+                      {g.result === 'win' ? 'ganó' : g.result === 'loss' ? 'perdió' : 'tablas'}
+                    </Badge>
+                    <span className="ml-1.5 text-2xs text-apagado">{g.termination}</span>
+                  </Td>
+                  <Td className="whitespace-nowrap">{g.opp_username}</Td>
+                  <Td num className="whitespace-nowrap">
+                    {g.my_rating} <span className="text-apagado">vs</span> {g.opp_rating}
+                  </Td>
+                  <Td className="max-w-[16rem] truncate text-tenue">
+                    {g.opening_id ? (nombres.get(g.opening_id) ?? 'Sin resolver') : 'Sin resolver'}
+                  </Td>
+                  <Td>
+                    <span className="flex items-center gap-2 whitespace-nowrap">
+                      <Link href={`/partida/${g.id}`} className="text-xs font-medium text-acento hover:underline">
+                        Analizar
+                      </Link>
+                      <a
+                        className="text-xs text-apagado hover:text-texto"
+                        href={g.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="Abrir en chess.com"
+                      >
+                        ↗
+                      </a>
+                    </span>
+                  </Td>
+                </Fila>
+              ))}
+            </Tabla>
+          )}
+        </Panel>
       </div>
-
-      <Panel>
-        {rows.length === 0 ? (
-          <EmptyState
-            titulo="Ninguna partida con estos filtros"
-            detalle={hayFiltro ? 'Prueba quitando alguno de los filtros de arriba.' : undefined}
-            accion={
-              hayFiltro ? (
-                <Link href="/registro" className="text-xs text-acento hover:underline">
-                  Quitar todos los filtros
-                </Link>
-              ) : null
-            }
-          />
-        ) : (
-          <Tabla
-            aligns={['text', 'text', 'text', 'text', 'text', 'num', 'text', 'text']}
-            headers={[
-              <SortableTh
-                key="fecha"
-                label="Fecha"
-                sortKey="end_time"
-                currentSort={sort}
-                currentDir={dir}
-                href={sortLink}
-              />,
-              'Tipo',
-              'Color',
-              'Resultado',
-              'Rival',
-              <SortableTh
-                key="rating"
-                label="Rating"
-                sortKey="my_rating"
-                currentSort={sort}
-                currentDir={dir}
-                href={sortLink}
-              />,
-              'Apertura',
-              '',
-            ]}
-          >
-            {rows.map((g) => (
-              <Fila key={g.id}>
-                <Td className="whitespace-nowrap tabular-nums text-tenue">
-                  {new Date(g.end_time).toLocaleString('es-CL', {
-                    timeZone: 'America/Santiago',
-                    dateStyle: 'short',
-                    timeStyle: 'short',
-                  })}
-                </Td>
-                <Td className="whitespace-nowrap">
-                  <Badge>{formatTimeControl(g.time_control)}</Badge>
-                </Td>
-                <Td>
-                  <span
-                    aria-hidden
-                    className={`mr-1.5 inline-block h-2 w-2 rounded-full align-middle ${
-                      g.my_color === 'white' ? 'bg-ventaja-blancas' : 'border border-borde-fuerte bg-ventaja-negras'
-                    }`}
-                  />
-                  {g.my_color === 'white' ? 'blancas' : 'negras'}
-                </Td>
-                <Td>
-                  <Badge tono={g.result === 'win' ? 'bien' : g.result === 'loss' ? 'critico' : 'neutro'}>
-                    {g.result === 'win' ? 'ganó' : g.result === 'loss' ? 'perdió' : 'tablas'}
-                  </Badge>
-                  <span className="ml-1.5 text-2xs text-apagado">{g.termination}</span>
-                </Td>
-                <Td className="whitespace-nowrap">{g.opp_username}</Td>
-                <Td num className="whitespace-nowrap">
-                  {g.my_rating} <span className="text-apagado">vs</span> {g.opp_rating}
-                </Td>
-                <Td className="max-w-[16rem] truncate text-tenue">
-                  {g.opening_id ? (nombres.get(g.opening_id) ?? 'Sin resolver') : 'Sin resolver'}
-                </Td>
-                <Td>
-                  <span className="flex items-center gap-2 whitespace-nowrap">
-                    <Link href={`/partida/${g.id}`} className="text-xs font-medium text-acento hover:underline">
-                      Analizar
-                    </Link>
-                    <a
-                      className="text-xs text-apagado hover:text-texto"
-                      href={g.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      title="Abrir en chess.com"
-                    >
-                      ↗
-                    </a>
-                  </span>
-                </Td>
-              </Fila>
-            ))}
-          </Tabla>
-        )}
-      </Panel>
-    </div>
+    </Pagina>
   );
 }

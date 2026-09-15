@@ -473,6 +473,14 @@ export type Database = {
         }
         Relationships: []
       }
+      v_games_by_day: {
+        Row: {
+          day_local: string | null
+          n_games: number | null
+          n_rapid: number | null
+        }
+        Relationships: []
+      }
       v_games_by_month: {
         Row: {
           month_local: string | null

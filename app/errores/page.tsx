@@ -5,7 +5,7 @@ import {
   Clasificacion,
   EmptyState,
   Fila,
-  PageHeader,
+  Pagina,
   Panel,
   Tabla,
   Td,
@@ -83,174 +83,177 @@ export default async function ErroresPage() {
   const maxFase = Math.max(1, ...barrasFase.map((b) => b.valor));
 
   return (
-    <div className="space-y-6">
-      <PageHeader titulo="Errores">
-        Basado en {analizadas.toLocaleString('es-CL')} de {totales.toLocaleString('es-CL')} partidas
-        analizadas. Se excluyen las jugadas de libro y las de partidas ya decididas (win% del que
-        mueve sobre 95 o bajo 5): jugar flojo en una partida ganada no cuenta como blunder.
-      </PageHeader>
+    <Pagina
+      titulo="Errores"
+      subtitulo={
+        <>
+          Basado en {analizadas.toLocaleString('es-CL')} de {totales.toLocaleString('es-CL')} partidas analizadas. Se excluyen las jugadas de libro y las de partidas ya decididas (win% del que mueve sobre 95 o bajo 5): jugar flojo en una partida ganada no cuenta como blunder.
+        </>
+      }
+    >
+      <div className="space-y-6">
+        {diagnostico ? (
+          <Panel
+            title="Diagnóstico"
+            subtitle="Hay partidas analizadas pero las tablas de abajo salen vacías. Este es el desglose de por qué."
+          >
+            <ul className="space-y-1 text-sm">
+              <li>
+                Jugadas con clasificación (de cualquiera):{' '}
+                <strong className="tabular-nums">{diagnostico.conClasificacion}</strong>
+              </li>
+              <li>
+                De esas, mías (<code className="text-tenue">is_mine</code>):{' '}
+                <strong className="tabular-nums">{diagnostico.mias}</strong>
+              </li>
+              <li>
+                De esas, fuera de libro (<code className="text-tenue">is_book = false</code>):{' '}
+                <strong className="tabular-nums">{diagnostico.miasNoLibro}</strong>
+              </li>
+              <li>
+                De esas, en partida no decidida (<code className="text-tenue">is_decided = false</code>):{' '}
+                <strong className="tabular-nums">{diagnostico.miasNoLibroNoDecidida}</strong>
+              </li>
+            </ul>
+            <p className="mt-2 text-xs text-tenue">
+              El escalón donde el número se cae a 0 (o queda muy chico) es el filtro responsable.
+            </p>
+          </Panel>
+        ) : null}
 
-      {diagnostico ? (
-        <Panel
-          title="Diagnóstico"
-          subtitle="Hay partidas analizadas pero las tablas de abajo salen vacías. Este es el desglose de por qué."
-        >
-          <ul className="space-y-1 text-sm">
-            <li>
-              Jugadas con clasificación (de cualquiera):{' '}
-              <strong className="tabular-nums">{diagnostico.conClasificacion}</strong>
-            </li>
-            <li>
-              De esas, mías (<code className="text-tenue">is_mine</code>):{' '}
-              <strong className="tabular-nums">{diagnostico.mias}</strong>
-            </li>
-            <li>
-              De esas, fuera de libro (<code className="text-tenue">is_book = false</code>):{' '}
-              <strong className="tabular-nums">{diagnostico.miasNoLibro}</strong>
-            </li>
-            <li>
-              De esas, en partida no decidida (<code className="text-tenue">is_decided = false</code>):{' '}
-              <strong className="tabular-nums">{diagnostico.miasNoLibroNoDecidida}</strong>
-            </li>
-          </ul>
-          <p className="mt-2 text-xs text-tenue">
-            El escalón donde el número se cae a 0 (o queda muy chico) es el filtro responsable.
-          </p>
-        </Panel>
-      ) : null}
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Panel
+            title="¿Los errores se concentran en las jugadas rápidas?"
+            subtitle={`Tasa de error según cuánto pensaste la jugada${claseGrafico ? ` · ${claseGrafico}` : ''}`}
+          >
+            {porTiempo.length === 0 ? (
+              <EmptyState
+                titulo="Sin partidas analizadas todavía"
+                detalle="El motor corre en GitHub Actions. Puedes dispararlo desde Salud."
+              />
+            ) : (
+              <BarrasV datos={columnasTiempo} max={maxTasa} unidad="%" />
+            )}
+          </Panel>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+          <Panel
+            title="Errores graves por fase"
+            subtitle={`Graves por cada 100 jugadas, no conteo crudo${claseGrafico ? ` · ${claseGrafico}` : ''}`}
+          >
+            {barrasFase.length === 0 ? (
+              <EmptyState titulo="Sin partidas analizadas todavía" />
+            ) : (
+              <BarrasH datos={barrasFase} max={maxFase} />
+            )}
+          </Panel>
+        </div>
+
         <Panel
-          title="¿Los errores se concentran en las jugadas rápidas?"
-          subtitle={`Tasa de error según cuánto pensaste la jugada${claseGrafico ? ` · ${claseGrafico}` : ''}`}
+          title="Detalle por fase"
+          subtitle="Cuántas jugadas de cada tipo, en cada momento de la partida"
         >
-          {porTiempo.length === 0 ? (
+          {porFase.length === 0 ? (
             <EmptyState
               titulo="Sin partidas analizadas todavía"
-              detalle="El motor corre en GitHub Actions. Puedes dispararlo desde Salud."
+              detalle="Corre `pnpm analyze`, o espera al cron diario."
             />
           ) : (
-            <BarrasV datos={columnasTiempo} max={maxTasa} unidad="%" />
+            <div className="space-y-5">
+              {clases.map((clase) => {
+                const filas = porFase
+                  .filter((f) => f.time_class === clase)
+                  .sort((a, b) => (a.phase ?? 0) - (b.phase ?? 0));
+                if (filas.length === 0) return null;
+                return (
+                  <div key={clase}>
+                    <h3 className="mb-2 text-2xs uppercase tracking-wider text-tenue">{clase}</h3>
+                    <Tabla
+                      aligns={['text', 'num', 'num', 'num', 'num', 'num']}
+                      headers={[
+                        'Fase',
+                        <span key="j" className="inline-flex items-center">
+                          Jugadas
+                          {AYUDA_JUGADAS}
+                        </span>,
+                        <Clasificacion key="g" valor={3} />,
+                        <Clasificacion key="e" valor={2} />,
+                        <Clasificacion key="i" valor={1} />,
+                        <span key="cp" className="inline-flex items-center">
+                          CP perdidos
+                          <Ayuda alinear="der">
+                            Centipeones perdidos en promedio por jugada. 100 centipeones equivalen a
+                            un peón. Es el ACPL, la medida estándar de precisión.
+                          </Ayuda>
+                        </span>,
+                      ]}
+                    >
+                      {filas.map((f) => {
+                        const n = f.n_moves ?? 0;
+                        const fase = f.phase ?? 0;
+                        return (
+                          <Fila key={fase} atenuada={n < 20}>
+                            <Td>{NOMBRE_FASE[fase] ?? fase}</Td>
+                            <Td num>{n.toLocaleString('es-CL')}</Td>
+                            <Td num className="text-critico">{f.blunders ?? 0}</Td>
+                            <Td num className="text-serio">{f.mistakes ?? 0}</Td>
+                            <Td num className="text-aviso">{f.inaccuracies ?? 0}</Td>
+                            <Td num>{f.avg_cp_loss?.toFixed(0) ?? '—'}</Td>
+                          </Fila>
+                        );
+                      })}
+                    </Tabla>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </Panel>
 
-        <Panel
-          title="Errores graves por fase"
-          subtitle={`Graves por cada 100 jugadas, no conteo crudo${claseGrafico ? ` · ${claseGrafico}` : ''}`}
-        >
-          {barrasFase.length === 0 ? (
+        <Panel title="Detalle por tiempo de jugada" subtitle="El mismo corte, con los números exactos">
+          {porTiempo.length === 0 ? (
             <EmptyState titulo="Sin partidas analizadas todavía" />
           ) : (
-            <BarrasH datos={barrasFase} max={maxFase} />
+            <div className="space-y-5">
+              {clases.map((clase) => {
+                const filas = porTiempo.filter((f) => f.time_class === clase);
+                if (filas.length === 0) return null;
+                return (
+                  <div key={clase}>
+                    <h3 className="mb-2 text-2xs uppercase tracking-wider text-tenue">{clase}</h3>
+                    <Tabla
+                      aligns={['text', 'num', 'num', 'num']}
+                      headers={[
+                        'Rango',
+                        <span key="j" className="inline-flex items-center">
+                          Jugadas
+                          {AYUDA_JUGADAS}
+                        </span>,
+                        'Tasa de error',
+                        'CP perdidos',
+                      ]}
+                    >
+                      {ORDEN_BUCKET.map((bucket) => {
+                        const fila = filas.find((f) => f.time_bucket === bucket);
+                        const n = fila?.n_moves ?? 0;
+                        return (
+                          <Fila key={bucket} atenuada={n < 20}>
+                            <Td>
+                              <Badge>{bucket}</Badge>
+                            </Td>
+                            <Td num>{n.toLocaleString('es-CL')}</Td>
+                            <Td num>{pct(fila?.error_rate)}</Td>
+                            <Td num>{fila?.avg_cp_loss?.toFixed(0) ?? '—'}</Td>
+                          </Fila>
+                        );
+                      })}
+                    </Tabla>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </Panel>
       </div>
-
-      <Panel
-        title="Detalle por fase"
-        subtitle="Cuántas jugadas de cada tipo, en cada momento de la partida"
-      >
-        {porFase.length === 0 ? (
-          <EmptyState
-            titulo="Sin partidas analizadas todavía"
-            detalle="Corre `pnpm analyze`, o espera al cron diario."
-          />
-        ) : (
-          <div className="space-y-5">
-            {clases.map((clase) => {
-              const filas = porFase
-                .filter((f) => f.time_class === clase)
-                .sort((a, b) => (a.phase ?? 0) - (b.phase ?? 0));
-              if (filas.length === 0) return null;
-              return (
-                <div key={clase}>
-                  <h3 className="mb-2 text-2xs uppercase tracking-wider text-tenue">{clase}</h3>
-                  <Tabla
-                    aligns={['text', 'num', 'num', 'num', 'num', 'num']}
-                    headers={[
-                      'Fase',
-                      <span key="j" className="inline-flex items-center">
-                        Jugadas
-                        {AYUDA_JUGADAS}
-                      </span>,
-                      <Clasificacion key="g" valor={3} />,
-                      <Clasificacion key="e" valor={2} />,
-                      <Clasificacion key="i" valor={1} />,
-                      <span key="cp" className="inline-flex items-center">
-                        CP perdidos
-                        <Ayuda alinear="der">
-                          Centipeones perdidos en promedio por jugada. 100 centipeones equivalen a
-                          un peón. Es el ACPL, la medida estándar de precisión.
-                        </Ayuda>
-                      </span>,
-                    ]}
-                  >
-                    {filas.map((f) => {
-                      const n = f.n_moves ?? 0;
-                      const fase = f.phase ?? 0;
-                      return (
-                        <Fila key={fase} atenuada={n < 20}>
-                          <Td>{NOMBRE_FASE[fase] ?? fase}</Td>
-                          <Td num>{n.toLocaleString('es-CL')}</Td>
-                          <Td num className="text-critico">{f.blunders ?? 0}</Td>
-                          <Td num className="text-serio">{f.mistakes ?? 0}</Td>
-                          <Td num className="text-aviso">{f.inaccuracies ?? 0}</Td>
-                          <Td num>{f.avg_cp_loss?.toFixed(0) ?? '—'}</Td>
-                        </Fila>
-                      );
-                    })}
-                  </Tabla>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </Panel>
-
-      <Panel title="Detalle por tiempo de jugada" subtitle="El mismo corte, con los números exactos">
-        {porTiempo.length === 0 ? (
-          <EmptyState titulo="Sin partidas analizadas todavía" />
-        ) : (
-          <div className="space-y-5">
-            {clases.map((clase) => {
-              const filas = porTiempo.filter((f) => f.time_class === clase);
-              if (filas.length === 0) return null;
-              return (
-                <div key={clase}>
-                  <h3 className="mb-2 text-2xs uppercase tracking-wider text-tenue">{clase}</h3>
-                  <Tabla
-                    aligns={['text', 'num', 'num', 'num']}
-                    headers={[
-                      'Rango',
-                      <span key="j" className="inline-flex items-center">
-                        Jugadas
-                        {AYUDA_JUGADAS}
-                      </span>,
-                      'Tasa de error',
-                      'CP perdidos',
-                    ]}
-                  >
-                    {ORDEN_BUCKET.map((bucket) => {
-                      const fila = filas.find((f) => f.time_bucket === bucket);
-                      const n = fila?.n_moves ?? 0;
-                      return (
-                        <Fila key={bucket} atenuada={n < 20}>
-                          <Td>
-                            <Badge>{bucket}</Badge>
-                          </Td>
-                          <Td num>{n.toLocaleString('es-CL')}</Td>
-                          <Td num>{pct(fila?.error_rate)}</Td>
-                          <Td num>{fila?.avg_cp_loss?.toFixed(0) ?? '—'}</Td>
-                        </Fila>
-                      );
-                    })}
-                  </Tabla>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </Panel>
-    </div>
+    </Pagina>
   );
 }

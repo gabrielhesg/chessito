@@ -595,6 +595,62 @@ de la barra, el desborde horizontal del `min-w-0`, "Nf6" convertido en "NF6" por
 (en notación de ajedrez la caja es significativa), y la lista de jugadas que no seguía a la jugada
 activa.
 
+## Estado al terminar la Fase 7
+
+Rediseño al mockup de Claude Design (artboards `2a` portada, `1d` partida, `1e` entrenador), sobre
+el mismo backend de las Fases 1-4. Una migración nueva (`0008_calendario.sql`), ninguna página
+nueva.
+
+| Pieza | Dónde |
+|---|---|
+| Paleta verde carbón + acento coral, y la clase `.eyebrow` | `app/globals.css` |
+| Barra lateral con ruta activa y menú de celular | `components/Sidebar.tsx` |
+| Armazón de cabecera a lo ancho | `components/ui/pagina.tsx` (`Pagina`) |
+| Calendario del mes | `components/charts/MonthCalendar.tsx` |
+| Vista del calendario | `supabase/migrations/0008_calendario.sql` (`v_games_by_day`) |
+
+**Los nombres de token no cambiaron, solo sus valores.** `--color-panel`, `--color-acento`,
+`--color-bien` y compañía siguen llamándose igual, así que el cambio de paleta no obligó a tocar
+una sola página. La regla del validador de la Fase 6 sigue en pie: `Clasificacion` va siempre con
+glifo y texto, el color es refuerzo.
+
+**La fuente es Geist desde el paquete npm, no desde `next/font/google`.** Los archivos viajan en
+`node_modules`, así que un build sin red no se cae — que es la razón por la que la Fase 6 se había
+quedado en la sans del sistema. Las variables CSS que expone son `--font-geist-sans` y
+`--font-geist-mono`; no inventar otros nombres, están en `node_modules/geist/dist/font.js`.
+
+**`Nav.tsx` y `PageHeader` se borraron, no quedaron deprecados.** La barra lateral reemplaza al nav
+y `Pagina` al encabezado; dejar los dos caminos vivos era garantizar que la próxima página naciera
+con el viejo.
+
+**Los bloques sin datos se muestran vacíos y dicen qué falta.** La portada del mockup tiene
+bloques ("Estás mejorando", "No lo olvides jugando") que la app todavía no puede derivar. Van
+igual, con borde punteado y una línea que dice qué derivación falta — nunca con números de
+ejemplo, que es la forma más rápida de que Gabriel deje de creerle a los números que sí son
+reales.
+
+**Sin racha.** El mockup trae un chip de "6 días seguidos". No se implementó: la regla de la Fase 4
+(*sin gamificación, rachas ni notificaciones*) sigue en pie, y el calendario del mes ya responde
+"¿estoy jugando?" sin convertirlo en un puntaje que se pueda perder.
+
+**Los puntos de progreso de la sesión califican igual que SM-2.** `sessionToday` cuenta un
+ejercicio como acertado solo si se resolvió al primer intento y sin pista, que es exactamente el
+criterio de `nextReview`. Si contara el último intento, un ejercicio fallado dos veces y acertado
+al tercero saldría en verde mientras la repetición espaciada lo sigue sirviendo — un punto verde
+para algo que la app considera fallado se lee como un bug.
+
+**La portada no se cae si `0008` no está aplicada.** `gamesByDay` es la única lectura de la
+portada que va con `.catch(() => null)`: la vista la crea la migración nueva y el calendario se
+degrada a su bloque vacío en vez de tumbar la pantalla entera. Aplicar `pnpm db:push` antes de
+desplegar.
+
+**Verificado en el navegador, a 1280px y a 400px**, con el mismo arnés temporal de la Fase 6
+(`app/preview/page.tsx` + `preview` en el matcher del middleware, ambos revertidos después).
+`scrollWidth` calza con `innerWidth` en las dos anchuras. Salieron de ahí tres arreglos: las tres
+tarjetas de resumen de `/partida` apiladas en una columna bajo `sm`, la etiqueta de patrón del
+entrenador más angosta en celular, y el pie del gráfico de evaluación, que decía "1 errores graves
+marcados" y repetía la leyenda "Blancas arriba · negras abajo" que ya estaba sobre el gráfico.
+
 ## Convenciones
 
 - Todo acceso a datos es del lado servidor: Server Components y route handlers. Nada de
