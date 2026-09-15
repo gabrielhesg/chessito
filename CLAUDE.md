@@ -644,6 +644,16 @@ portada que va con `.catch(() => null)`: la vista la crea la migración nueva y 
 degrada a su bloque vacío en vez de tumbar la pantalla entera. Aplicar `pnpm db:push` antes de
 desplegar.
 
+**La base de produccion tenia el esquema pero `schema_migrations` vacia.** El esquema se habia
+creado a mano, pegando el SQL en el editor de Supabase (que `scripts/db-push.ts` ofrece como
+alternativa valida en su propio comentario), asi que la tabla que lleva la cuenta nunca se lleno.
+Contra esa base, `db:push` intenta aplicar 0001 de nuevo y muere con `type "game_result" already
+exists`. Por eso `db:push` tiene dos modos mas: `--revisar` (solo mira: imprime lo anotado, las
+tablas, las vistas y las columnas de `puzzles`/`puzzle_attempts`) y `--marcar-aplicadas <lista>`
+(anota sin ejecutar, para adoptar un esquema que ya existe). El orden importa y no es opcional:
+la lista sale de `--revisar`, nunca de adivinar — marcar de mas deja la base sin objetos que el
+codigo espera, y el error aparece despues, en una pagina.
+
 **Aplicar una migracion ya no exige un computador.** Era lo unico que quedaba fuera de la regla
 "todo se opera desde el navegador, incluso desde el celular", y costo una pantalla caida:
 `/entrenador` devolvia 500 en produccion despues de mergear la Fase 6, porque

@@ -9,15 +9,24 @@ name: migraciones
 # 500 despues de mergear la Fase 6 porque `puzzle_attempts.attempt_no` (que agrega la 0007) no
 # existia en la base, y no habia forma de aplicarla sin terminal.
 #
-# Es idempotente: `db:push` salta las que ya estan en `schema_migrations`, asi que volver a
-# correrlo no hace nada. La rama decide el ambiente, igual que en `ingest.yml`: main va a
-# produccion, cualquier otra rama a development.
-#
-# `--env` es OBLIGATORIO: `db:push` no lo deduce de `SUPABASE_DB_URL` a proposito, porque aplicar
-# migraciones a la base equivocada no se deshace. Sin el flag el script se niega y muestra su uso,
-# que es exactamente como fallo la primera corrida de este workflow.
+# La rama decide el ambiente, igual que en `ingest.yml`: main va a produccion, cualquier otra rama
+# a development. `--env` es OBLIGATORIO para `db:push` y es a proposito: aplicar migraciones a la
+# base equivocada no se deshace.
 on:
   workflow_dispatch:
+    inputs:
+      modo:
+        description: 'Que hacer'
+        type: choice
+        default: revisar
+        options:
+          - revisar
+          - aplicar
+          - adoptar
+      migraciones:
+        description: 'Solo para "adoptar": migraciones que la base YA tiene, separadas por coma'
+        type: string
+        required: false
 
 jobs:
   aplicar:
@@ -31,7 +40,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Aplicar migraciones
+      - name: Migraciones
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
@@ -41,4 +50,34 @@ jobs:
           OWNER_EMAIL: ${{ secrets.OWNER_EMAIL }}
           CRON_SECRET: no-aplica-en-actions
           APP_ENV: ${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
-        run: pnpm db:push --env ${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
+          MODO: ${{ inputs.modo }}
+          LISTA: ${{ inputs.migraciones }}
+          AMBIENTE: ${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
+        run: |
+          set -euo pipefail
+          case "$MODO" in
+            revisar)
+              # Solo mira. No escribe nada. Es el modo por omision para que un disparo
+              # accidental no toque la base.
+              pnpm db:push --env "$AMBIENTE" --revisar
+              ;;
+            aplicar)
+              pnpm db:push --env "$AMBIENTE"
+              ;;
+            adoptar)
+              # Para una base cuyo esquema se creo a mano y no tiene nada en `schema_migrations`:
+              # anota como aplicadas las que ya estan (sin ejecutarlas) y despues aplica el resto.
+              # La lista sale de correr el modo `revisar` primero, nunca de adivinar.
+              if [ -z "${LISTA:-}" ]; then
+                echo "El modo 'adoptar' necesita la lista de migraciones que la base ya tiene."
+                echo "Corre primero el modo 'revisar' para saber cuales son."
+                exit 1
+              fi
+              pnpm db:push --env "$AMBIENTE" --marcar-aplicadas "$LISTA"
+              pnpm db:push --env "$AMBIENTE"
+              ;;
+            *)
+              echo "Modo desconocido: $MODO"
+              exit 1
+              ;;
+          esac
