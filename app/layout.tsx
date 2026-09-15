@@ -18,13 +18,18 @@ export const metadata: Metadata = {
  *
  * Si la base todavia no responde (primer arranque, migraciones sin aplicar) la barra se dibuja
  * igual con los conteos en cero: la navegacion no puede depender de que la base este lista.
+ *
+ * El nombre de usuario entra en el MISMO try/catch, y no es cosmetico: `next build` prerrenderiza
+ * `/_not-found`, que pasa por este layout, y en CI no hay secretos — leer `env.CHESSCOM_USERNAME`
+ * suelto tumbaba el build entero con "Variables de entorno invalidas o ausentes". Es la razon por
+ * la que `lib/env.ts` valida perezosamente, y el layout tiene que respetarla.
  */
-async function insignias(): Promise<{ vencidos: number; fallando: number }> {
+async function insignias(): Promise<{ vencidos: number; fallando: number; usuario: string }> {
   try {
     const [vencidos, salud] = await Promise.all([dueCount(), healthSummary()]);
-    return { vencidos, fallando: salud?.checks_failing ?? 0 };
+    return { vencidos, fallando: salud?.checks_failing ?? 0, usuario: env.CHESSCOM_USERNAME };
   } catch {
-    return { vencidos: 0, fallando: 0 };
+    return { vencidos: 0, fallando: 0, usuario: '' };
   }
 }
 
@@ -32,7 +37,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // Etiqueta visible cuando NO es produccion: un preview identico a produccion es la receta
   // para tomar decisiones sobre datos equivocados (docs/ENVIRONMENTS.md).
   const label = envLabel();
-  const { vencidos, fallando } = await insignias();
+  const { vencidos, fallando, usuario } = await insignias();
 
   return (
     <html lang="es" className={`${GeistSans.variable} ${GeistMono.variable}`}>
@@ -41,7 +46,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <Sidebar
             ejerciciosVencidos={vencidos}
             chequeosFallando={fallando}
-            usuario={env.CHESSCOM_USERNAME}
+            usuario={usuario}
             subtitulo="chess.com"
           />
           <div className="min-w-0 flex-1">

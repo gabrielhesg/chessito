@@ -117,6 +117,8 @@ export function Sidebar({
         />
         Salud del sistema
       </Link>
+      {/* Sin nombre de usuario (la base no respondio) no se dibuja un chip vacio. */}
+      {usuario ? (
       <div className="flex items-center gap-2.5 rounded-[9px] border border-borde px-2.5 py-2">
         <span className="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-borde font-mono text-[11px] font-medium text-tenue">
           {usuario.slice(0, 2).toUpperCase()}
@@ -126,6 +128,7 @@ export function Sidebar({
           <p className="truncate font-mono text-[10.5px] text-apagado">{subtitulo}</p>
         </div>
       </div>
+      ) : null}
     </div>
   );
 

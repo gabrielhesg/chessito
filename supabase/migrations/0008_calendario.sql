@@ -18,7 +18,19 @@ where rules = 'chess'
 group by 1;
 
 alter view v_games_by_day set (security_invoker = on);
-revoke all on v_games_by_day from anon, authenticated;
+
+-- Los roles `anon` y `authenticated` los crea Supabase, no PostgreSQL: en un Postgres comun (el
+-- de los tests de integracion) no existen y un `revoke` pelado aborta la migracion entera. Mismo
+-- guardado que usan 0005 y 0006.
+do $$
+begin
+  if exists (select 1 from pg_roles where rolname = 'anon') then
+    revoke all on public.v_games_by_day from anon;
+  end if;
+  if exists (select 1 from pg_roles where rolname = 'authenticated') then
+    revoke all on public.v_games_by_day from authenticated;
+  end if;
+end $$;
 
 comment on view v_games_by_day is
   'Partidas por dia local de Santiago. Alimenta el calendario de la portada.';
