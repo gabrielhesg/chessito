@@ -73,8 +73,10 @@ function PanelExplicacion({
   return (
     <div className="space-y-4 text-sm">
       <div
-        className={`rounded-lg border px-3 py-2 ${
-          estado === 'resuelto' ? 'border-bien/40 bg-bien/10 text-bien' : 'border-critico/40 bg-critico/10 text-critico'
+        className={`rounded-xl border px-4 py-3 text-sm ${
+          estado === 'resuelto'
+            ? 'border-bien/35 bg-bien/[0.08] text-bien'
+            : 'border-critico/35 bg-critico/[0.08] text-critico'
         }`}
       >
         {estado === 'resuelto' ? (
@@ -92,11 +94,11 @@ function PanelExplicacion({
         <div>
           {/* Sin `uppercase`: en notacion de ajedrez la caja es significativa (N de caballo vs
               la columna f), asi que "Nf6" en mayusculas seria otra jugada distinta. */}
-          <p className="mb-1 text-2xs tracking-wider text-tenue">
+          <p className="mb-1.5 font-mono text-[10.5px] font-medium tracking-[0.11em] text-tenue">
             <span className="uppercase">Por qué</span> <span className="font-mono text-texto">{jugadaSan}</span>{' '}
             <span className="uppercase">pierde</span>
           </p>
-          <div className="rounded-lg border border-borde bg-panel-alto px-3 py-2">
+          <div className="rounded-xl border border-borde bg-panel-alto px-4 py-3.5">
             <LineaJugadas linea={refutacion} desdePly={puzzle.ply + 1} />
             <p className="mt-2 text-xs text-tenue">
               {refutacion.terminaEnMate ? (
@@ -130,11 +132,11 @@ function PanelExplicacion({
 
       {solucion && solucion.pasos.length > 1 ? (
         <div>
-          <p className="mb-1 text-2xs tracking-wider text-tenue">
+          <p className="mb-1.5 font-mono text-[10.5px] font-medium tracking-[0.11em] text-tenue">
             <span className="uppercase">Qué lograba</span>{' '}
             <span className="font-mono text-texto">{mejorSan}</span>
           </p>
-          <div className="rounded-lg border border-borde bg-panel-alto px-3 py-2">
+          <div className="rounded-xl border border-borde bg-panel-alto px-4 py-3.5">
             <LineaJugadas linea={solucion} desdePly={puzzle.ply} />
           </div>
         </div>
@@ -172,7 +174,18 @@ function PanelExplicacion({
  * sin notificaciones). Reintentar y explicar son las dos cosas que hacen que el ejercicio ensene
  * algo en vez de solo puntuar.
  */
-export function TrainerBoard({ puzzle, dueCount }: { puzzle: PuzzleUI; dueCount: number }) {
+export type PatronUI = { etiqueta: string; pct: number; titulo: string };
+
+export function TrainerBoard({
+  puzzle,
+  dueCount,
+  patrones = [],
+}: {
+  puzzle: PuzzleUI;
+  dueCount: number;
+  /** Aciertos al primer intento por patron. Lo calcula el servidor; aca solo se dibuja. */
+  patrones?: readonly PatronUI[];
+}) {
   const router = useRouter();
 
   const solucion = useMemo(
@@ -230,7 +243,7 @@ export function TrainerBoard({ puzzle, dueCount }: { puzzle: PuzzleUI; dueCount:
     if (!jugar(puzzle.playedUci)) return;
     setPosition(tablero.fen());
     setFlechas([
-      { startSquare: puzzle.playedUci.slice(0, 2), endSquare: puzzle.playedUci.slice(2, 4), color: '#d03b3b' },
+      { startSquare: puzzle.playedUci.slice(0, 2), endSquare: puzzle.playedUci.slice(2, 4), color: '#e0604f' },
     ]);
 
     const linea = puzzle.refutationLine ?? [];
@@ -239,7 +252,7 @@ export function TrainerBoard({ puzzle, dueCount }: { puzzle: PuzzleUI; dueCount:
         () => {
           if (!jugar(uci)) return;
           setPosition(tablero.fen());
-          setFlechas([{ startSquare: uci.slice(0, 2), endSquare: uci.slice(2, 4), color: '#d03b3b' }]);
+          setFlechas([{ startSquare: uci.slice(0, 2), endSquare: uci.slice(2, 4), color: '#e0604f' }]);
         },
         600 * (i + 1),
       );
@@ -362,9 +375,9 @@ export function TrainerBoard({ puzzle, dueCount }: { puzzle: PuzzleUI; dueCount:
   const tocaMover = estado === 'jugando';
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,420px)_1fr]">
-      <div>
-        <div className="overflow-hidden rounded-lg">
+    <div className="grid gap-[26px] lg:grid-cols-[minmax(0,460px)_1fr]">
+      <div className="min-w-0">
+        <div className="overflow-hidden rounded-xl">
           <Chessboard
             options={{
               position,
@@ -372,19 +385,19 @@ export function TrainerBoard({ puzzle, dueCount }: { puzzle: PuzzleUI; dueCount:
               boardOrientation: orientacion,
               allowDragging: tocaMover,
               arrows: flechas,
-              darkSquareStyle: { backgroundColor: '#4a5160' },
-              lightSquareStyle: { backgroundColor: '#b9bfcc' },
+              darkSquareStyle: { backgroundColor: '#769656' },
+              lightSquareStyle: { backgroundColor: '#eeeed2' },
             }}
           />
         </div>
-        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-tenue">
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-[12.5px] text-tenue">
           <Badge tono="acento">{orientacion === 'white' ? 'Juegan blancas' : 'Juegan negras'}</Badge>
           {puzzle.theme && NOMBRE_THEME[puzzle.theme] ? <Badge>{NOMBRE_THEME[puzzle.theme]}</Badge> : null}
-          <span>{dueCount} pendientes</span>
+          <span className="ml-auto font-mono text-[11.5px] text-apagado">{dueCount} pendientes</span>
         </div>
       </div>
 
-      <div className="space-y-4">
+      <div className="flex min-w-0 flex-col gap-4">
         {estado === 'jugando' ? (
           <div className="space-y-3">
             <p className="text-sm">
@@ -414,6 +427,29 @@ export function TrainerBoard({ puzzle, dueCount }: { puzzle: PuzzleUI; dueCount:
             </Button>
           </>
         )}
+
+        {patrones.length > 0 ? (
+          <div className="mt-1.5 border-t border-borde pt-3.5">
+            <p className="eyebrow mb-2.5">En qué patrón tropiezas más</p>
+            <div className="flex flex-col gap-2 text-[12.5px]">
+              {patrones.map((p) => (
+                <div key={p.etiqueta} className="flex items-center gap-2.5" title={p.titulo}>
+                  <span className="w-[130px] shrink-0 text-texto-suave">{p.etiqueta}</span>
+                  <span className="h-2 flex-1 overflow-hidden rounded-full bg-borde">
+                    <span
+                      className="block h-full rounded-full bg-acento"
+                      style={{ width: `${Math.max(2, Math.round(p.pct))}%` }}
+                    />
+                  </span>
+                  <span className="w-9 shrink-0 text-right font-mono text-apagado">{p.pct.toFixed(0)}%</span>
+                </div>
+              ))}
+            </div>
+            <p className="mt-2.5 text-[11.5px] text-apagado">
+              Aciertos al primer intento, sin pista. Los peores primero.
+            </p>
+          </div>
+        ) : null}
       </div>
     </div>
   );

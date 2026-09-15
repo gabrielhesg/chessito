@@ -6,9 +6,11 @@ import { useFormStatus } from 'react-dom';
 type Variante = 'primario' | 'fantasma' | 'peligro';
 
 const ESTILO: Record<Variante, string> = {
-  primario: 'bg-acento text-white hover:brightness-110 border-transparent',
-  fantasma: 'border-borde-fuerte text-texto hover:bg-panel-alto',
-  peligro: 'border-critico/50 text-critico hover:bg-critico/10',
+  // El primario es coral sobre texto oscuro: es el unico color saturado de la interfaz y por eso
+  // marca sin ambiguedad cual es LA accion de cada pantalla.
+  primario: 'border-transparent bg-acento font-semibold text-fondo hover:brightness-110',
+  fantasma: 'border-borde-fuerte bg-transparent text-tenue hover:text-texto',
+  peligro: 'border-critico/50 bg-transparent text-critico hover:bg-critico/10',
 };
 
 /**
@@ -43,7 +45,7 @@ export function Button({
       onClick={onClick}
       disabled={disabled || trabajando}
       aria-busy={trabajando || undefined}
-      className={`inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${ESTILO[variante]} ${className}`}
+      className={`inline-flex items-center justify-center gap-1.5 rounded-[9px] border px-3.5 py-2 text-[13px] font-medium transition-all disabled:cursor-not-allowed disabled:opacity-50 ${ESTILO[variante]} ${className}`}
     >
       {trabajando && pendingLabel ? pendingLabel : children}
     </button>

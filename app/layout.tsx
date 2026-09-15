@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
-import { Nav } from '@/components/Nav';
-import { envLabel } from '@/lib/env';
+import { GeistSans } from 'geist/font/sans';
+import { GeistMono } from 'geist/font/mono';
+import { Sidebar } from '@/components/Sidebar';
+import { dueCount, healthSummary } from '@/lib/data';
+import { env, envLabel } from '@/lib/env';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -9,31 +11,48 @@ export const metadata: Metadata = {
   description: 'Analisis de mis partidas de chess.com',
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+/**
+ * El layout consulta la base para las insignias de la barra lateral (ejercicios vencidos,
+ * chequeos fallando). Es una lectura barata y las paginas ya son `force-dynamic`, asi que no
+ * agrega trabajo real; a cambio, el conteo de lo que falta esta siempre a la vista.
+ *
+ * Si la base todavia no responde (primer arranque, migraciones sin aplicar) la barra se dibuja
+ * igual con los conteos en cero: la navegacion no puede depender de que la base este lista.
+ */
+async function insignias(): Promise<{ vencidos: number; fallando: number }> {
+  try {
+    const [vencidos, salud] = await Promise.all([dueCount(), healthSummary()]);
+    return { vencidos, fallando: salud?.checks_failing ?? 0 };
+  } catch {
+    return { vencidos: 0, fallando: 0 };
+  }
+}
+
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
   // Etiqueta visible cuando NO es produccion: un preview identico a produccion es la receta
   // para tomar decisiones sobre datos equivocados (docs/ENVIRONMENTS.md).
   const label = envLabel();
+  const { vencidos, fallando } = await insignias();
 
   return (
-    <html lang="es">
+    <html lang="es" className={`${GeistSans.variable} ${GeistMono.variable}`}>
       <body className="min-h-screen bg-fondo font-sans text-texto antialiased">
-        <header className="sticky top-0 z-20 border-b border-borde bg-fondo/85 backdrop-blur">
-          <div className="relative mx-auto flex max-w-6xl items-center gap-4 px-4 py-2.5">
-            <Link href="/" className="flex shrink-0 items-center gap-2">
-              <span aria-hidden className="text-lg leading-none">
-                ♞
-              </span>
-              <span className="font-semibold tracking-tight">Chessito</span>
-            </Link>
-            <Nav />
+        <div className="flex min-h-screen flex-col md:flex-row">
+          <Sidebar
+            ejerciciosVencidos={vencidos}
+            chequeosFallando={fallando}
+            usuario={env.CHESSCOM_USERNAME}
+            subtitulo="chess.com"
+          />
+          <div className="min-w-0 flex-1">
             {label ? (
-              <span className="ml-auto rounded-md border border-aviso/40 bg-aviso/10 px-2 py-0.5 text-2xs font-medium uppercase tracking-wider text-aviso">
+              <p className="border-b border-aviso/30 bg-aviso/10 px-7 py-1.5 text-center font-mono text-2xs font-medium uppercase tracking-wider text-aviso">
                 {label}
-              </span>
+              </p>
             ) : null}
+            {children}
           </div>
-        </header>
-        <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>
+        </div>
       </body>
     </html>
   );

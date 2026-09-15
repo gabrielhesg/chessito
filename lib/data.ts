@@ -398,3 +398,80 @@ export async function gameDetail(id: number): Promise<GameDetail | null> {
   if (!partida.data) return null;
   return { game: partida.data, moves: jugadas.data ?? [] };
 }
+
+export type GamesByDay = Views['v_games_by_day']['Row'];
+
+/** Partidas por dia local del mes dado (`YYYY-MM`), para el calendario de la portada. */
+export async function gamesByDay(month: string): Promise<GamesByDay[]> {
+  const { data, error } = await supabaseAdmin()
+    .from('v_games_by_day')
+    .select('*')
+    .gte('day_local', `${month}-01`)
+    .lte('day_local', `${month}-31`);
+  if (error) fail('v_games_by_day', error.message);
+  return data ?? [];
+}
+
+/** El rating mas alto alcanzado en un control de tiempo. No se guarda: se deriva de `games`. */
+export async function ratingMaximo(timeClass: string): Promise<number | null> {
+  const { data, error } = await supabaseAdmin()
+    .from('games')
+    .select('my_rating')
+    .eq('rules', 'chess')
+    .eq('time_class', timeClass)
+    .order('my_rating', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) fail('games', error.message);
+  return data?.my_rating ?? null;
+}
+
+/** Ejercicios vencidos agrupados por patron tactico, para "lo proximo que vence". */
+export async function dueByTheme(): Promise<Array<{ theme: string | null; n: number }>> {
+  const { data, error } = await supabaseAdmin()
+    .from('puzzles')
+    .select('theme')
+    .lte('due_at', new Date().toISOString())
+    .limit(1000);
+  if (error) fail('puzzles', error.message);
+
+  const porTema = new Map<string | null, number>();
+  for (const fila of data ?? []) {
+    porTema.set(fila.theme, (porTema.get(fila.theme) ?? 0) + 1);
+  }
+  return [...porTema.entries()].map(([theme, n]) => ({ theme, n })).sort((a, b) => b.n - a.n);
+}
+
+/**
+ * Los ejercicios cerrados hoy, en orden, para los puntos de progreso de la sesion. Solo cuentan
+ * los intentos que CIERRAN un ejercicio (`attempt_no` es el ultimo de su puzzle), asi que un
+ * ejercicio fallado dos veces y acertado al tercero es un punto, no tres.
+ *
+ * "Hoy" es el dia local de Santiago, igual que todo lo demas que la app muestra por fecha.
+ */
+export async function sessionToday(): Promise<Array<{ correct: boolean }>> {
+  const inicio = new Date();
+  // 03:00 UTC es la medianoche de Santiago en horario de verano y las 21:00 del dia anterior en
+  // invierno; el corte exacto lo pone la comparacion de fecha local de abajo.
+  inicio.setUTCHours(inicio.getUTCHours() - 30);
+
+  const { data, error } = await supabaseAdmin()
+    .from('puzzle_attempts')
+    .select('puzzle_id, correct, attempted_at')
+    .gte('attempted_at', inicio.toISOString())
+    .order('attempted_at', { ascending: true })
+    .limit(500);
+  if (error) fail('puzzle_attempts', error.message);
+
+  const hoyLocal = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santiago' }).format(new Date());
+  const esHoy = (iso: string): boolean =>
+    new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santiago' }).format(new Date(iso)) === hoyLocal;
+
+  // Un ejercicio se cuenta una vez, con el resultado de su ultimo intento del dia.
+  const porPuzzle = new Map<number, boolean>();
+  for (const fila of data ?? []) {
+    if (!esHoy(fila.attempted_at)) continue;
+    porPuzzle.set(fila.puzzle_id, fila.correct);
+  }
+  return [...porPuzzle.values()].map((correct) => ({ correct }));
+}

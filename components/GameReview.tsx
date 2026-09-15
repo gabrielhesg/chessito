@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Chess } from 'chess.js';
 import { Chessboard } from 'react-chessboard';
 import { EvalChart, type PuntoEval } from '@/components/charts/EvalChart';
@@ -10,6 +10,7 @@ export type JugadaUI = {
   ply: number;
   san: string;
   uci: string;
+  bestUci: string | null;
   isMine: boolean;
   isBook: boolean;
   evalCp: number | null;
@@ -31,6 +32,11 @@ function reloj(ms: number | null): string {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
 
+/** "12." para una jugada de blancas, "12..." para una de negras, como en cualquier visor. */
+function numeroDe(ply: number): string {
+  return `${Math.ceil(ply / 2)}${ply % 2 === 1 ? '.' : '...'}`;
+}
+
 /**
  * Revision de una partida: tablero navegable + lista de jugadas + grafico de evaluacion, los tres
  * sincronizados por el ply actual. Es la pantalla que Chess.com llama Game Review y que esta app
@@ -43,10 +49,13 @@ export function GameReview({
   jugadas,
   orientacion,
   plyInicial,
+  resumen,
 }: {
   jugadas: readonly JugadaUI[];
   orientacion: 'white' | 'black';
   plyInicial: number;
+  /** Tarjetas de resumen de la partida, que el servidor calcula y esta columna solo muestra. */
+  resumen?: ReactNode;
 }) {
   const [ply, setPly] = useState(plyInicial);
 
@@ -105,29 +114,38 @@ export function GameReview({
         {
           startSquare: jugadaActual.uci.slice(0, 2),
           endSquare: jugadaActual.uci.slice(2, 4),
-          color: jugadaActual.classification === 3 ? '#d03b3b' : '#3987e5',
+          color: jugadaActual.classification === 3 ? '#e0604f' : '#d9603f',
         },
       ]
     : [];
 
+  // La tarjeta de la jugada actual toma el color de su clasificacion: coral apagado para un
+  // error grave, borde neutro para el resto. El glifo de `Clasificacion` sigue siendo el canal.
+  const tonoTarjeta =
+    jugadaActual?.isMine && jugadaActual.classification === 3
+      ? 'border-critico/30 bg-critico/[0.07]'
+      : jugadaActual?.isMine && jugadaActual.classification === 2
+        ? 'border-serio/30 bg-serio/[0.07]'
+        : 'border-borde bg-panel';
+
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,460px)_1fr]">
-      <div>
-        <div className="overflow-hidden rounded-lg">
+    <div className="grid gap-[26px] lg:grid-cols-[minmax(0,520px)_1fr]">
+      <div className="min-w-0">
+        <div className="overflow-hidden rounded-xl">
           <Chessboard
             options={{
               position: fens[plyAcotado],
               boardOrientation: orientacion,
               allowDragging: false,
               arrows: flechas,
-              darkSquareStyle: { backgroundColor: '#4a5160' },
-              lightSquareStyle: { backgroundColor: '#b9bfcc' },
+              darkSquareStyle: { backgroundColor: '#769656' },
+              lightSquareStyle: { backgroundColor: '#eeeed2' },
             }}
           />
         </div>
 
-        <div className="mt-2 flex items-center justify-between gap-2">
-          <div className="flex gap-1">
+        <div className="mt-3 flex items-center justify-between gap-2">
+          <div className="flex gap-1.5">
             {(
               [
                 ['⏮', 0, 'Ir al inicio'],
@@ -142,41 +160,71 @@ export function GameReview({
                 onClick={() => ir(destino)}
                 aria-label={etiqueta}
                 title={etiqueta}
-                className="rounded-lg border border-borde px-2.5 py-1 text-sm text-tenue transition-colors hover:border-borde-fuerte hover:text-texto"
+                className="rounded-lg border border-borde px-2.5 py-1.5 text-[13px] text-tenue transition-colors hover:border-borde-fuerte hover:bg-panel-alto hover:text-texto"
               >
                 {icono}
               </button>
             ))}
           </div>
-          <span className="text-xs tabular-nums text-apagado">
+          <span className="font-mono text-[11.5px] tabular-nums text-apagado">
             {plyAcotado} / {maxPly} · usa ← →
           </span>
         </div>
 
         {jugadaActual ? (
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-            <span className="font-mono">{jugadaActual.san}</span>
-            <Clasificacion valor={jugadaActual.classification} />
-            {jugadaActual.isBook ? <Badge>libro</Badge> : null}
-            {jugadaActual.evalCp !== null ? (
-              <Badge tono="acento">
-                {jugadaActual.mateIn !== null ? `M${Math.abs(jugadaActual.mateIn)}` : cpAPeones(jugadaActual.evalCp)}
-              </Badge>
-            ) : null}
-            <span className="text-xs text-tenue">
-              {segundos(jugadaActual.moveTimeMs)}
-              {jugadaActual.clockMs !== null ? ` · reloj ${reloj(jugadaActual.clockMs)}` : ''}
-            </span>
+          <div className={`mt-3.5 rounded-xl border px-4 py-3.5 ${tonoTarjeta}`}>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span className="font-mono text-sm font-medium">
+                {numeroDe(jugadaActual.ply)} {jugadaActual.san}
+              </span>
+              <Clasificacion valor={jugadaActual.isMine ? jugadaActual.classification : null} />
+              {jugadaActual.isBook ? <Badge>libro</Badge> : null}
+              <span className="ml-auto font-mono text-[11.5px] text-tenue">
+                {segundos(jugadaActual.moveTimeMs)}
+                {jugadaActual.clockMs !== null ? ` · reloj ${reloj(jugadaActual.clockMs)}` : ''}
+              </span>
+            </div>
+            <p className="mt-2.5 text-[13.5px] leading-relaxed text-texto-suave">
+              {jugadaActual.evalCp === null ? (
+                'Sin evaluación del motor para esta posición.'
+              ) : (
+                <>
+                  La evaluación queda en{' '}
+                  <span className="font-mono text-texto">
+                    {jugadaActual.mateIn !== null
+                      ? `M${Math.abs(jugadaActual.mateIn)}`
+                      : cpAPeones(jugadaActual.evalCp)}
+                  </span>
+                  {jugadaActual.cpLoss !== null && jugadaActual.cpLoss > 0 ? (
+                    <>
+                      , una caída de{' '}
+                      <span className="font-mono text-texto">{(jugadaActual.cpLoss / 100).toFixed(1)}</span> puntos
+                    </>
+                  ) : null}
+                  {jugadaActual.bestUci ? (
+                    <>
+                      . El motor jugaba <span className="font-mono text-texto">{jugadaActual.bestUci}</span>
+                    </>
+                  ) : null}
+                  .
+                </>
+              )}
+            </p>
           </div>
         ) : (
-          <p className="mt-3 text-sm text-tenue">Posición inicial</p>
+          <p className="mt-3.5 rounded-xl border border-borde px-4 py-3.5 text-sm text-tenue">
+            Posición inicial. Avanza con ▶ o con la flecha derecha.
+          </p>
         )}
       </div>
 
-      <div className="min-w-0 space-y-4">
+      <div className="flex min-w-0 flex-col gap-[18px]">
         {puntosEval.some((p) => p.evalCp !== null) ? (
           <div>
-            <p className="mb-1 text-2xs uppercase tracking-wider text-tenue">Evaluación</p>
+            <div className="mb-2 flex items-baseline justify-between gap-2">
+              <p className="eyebrow">Evaluación</p>
+              <span className="text-[11.5px] text-apagado">Blancas arriba · negras abajo</span>
+            </div>
             <EvalChart puntos={puntosEval} plyActual={plyAcotado} onSeleccionar={ir} />
           </div>
         ) : (
@@ -186,9 +234,11 @@ export function GameReview({
           </p>
         )}
 
-        <div>
-          <p className="mb-1 text-2xs uppercase tracking-wider text-tenue">Jugadas</p>
-          <div className="max-h-[22rem] overflow-y-auto rounded-lg border border-borde">
+        {resumen}
+
+        <div className="min-w-0">
+          <p className="eyebrow mb-2">Jugadas</p>
+          <div className="max-h-[300px] overflow-y-auto rounded-xl border border-borde">
             <ol ref={listaRef} className="divide-y divide-borde/60">
               {jugadas.map((j) => {
                 const numero = Math.ceil(j.ply / 2);
@@ -201,7 +251,7 @@ export function GameReview({
                       onClick={() => ir(j.ply)}
                       aria-current={activa ? 'true' : undefined}
                       className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors ${
-                        activa ? 'bg-acento/15' : 'hover:bg-panel-alto'
+                        activa ? 'bg-acento/15 text-texto' : 'hover:bg-panel-alto'
                       }`}
                     >
                       <span className="w-10 shrink-0 text-2xs tabular-nums text-apagado">

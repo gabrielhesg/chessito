@@ -4,7 +4,7 @@ import {
   Ayuda,
   Badge,
   Fila,
-  PageHeader,
+  Pagina,
   Panel,
   Rendimiento,
   SortableTh,
@@ -81,123 +81,117 @@ export default async function AperturasPage({
       }));
 
   return (
-    <div className="space-y-6">
-      <PageHeader titulo="Aperturas">
-        Contra qué aperturas pierdes y con qué color. El rendimiento usa la cota inferior de
-        Wilson; bajo 20 partidas la fila sale atenuada y sin recomendación.{' '}
-        {analizadas > 0 ? (
-          <>
-            La columna de divergencia sale del motor: {analizadas.toLocaleString('es-CL')} de{' '}
-            {totalPartidas.toLocaleString('es-CL')} partidas analizadas.
-          </>
-        ) : (
-          <>
-            La columna de divergencia necesita el motor y todavía no hay partidas analizadas.
-          </>
-        )}
-      </PageHeader>
+    <Pagina
+      titulo="Aperturas"
+      subtitulo={
+        <>
+          Contra qué aperturas pierdes y con qué color. El rendimiento usa la cota inferior de Wilson; bajo 20 partidas la fila sale atenuada y sin recomendación.{' '} {analizadas > 0 ? ( <> La columna de divergencia sale del motor: {analizadas.toLocaleString('es-CL')} de{' '} {totalPartidas.toLocaleString('es-CL')} partidas analizadas. </> ) : ( <> La columna de divergencia necesita el motor y todavía no hay partidas analizadas. </> )}
+        </>
+      }
+    >
+      <div className="space-y-6">
+        {(['white', 'black'] as const).map((color) => {
+          const barras = peores(color);
+          const tabla = porColor(color);
+          return (
+            <Panel
+              key={color}
+              title={color === 'white' ? 'Con blancas' : 'Con negras'}
+              subtitle="Las peores primero. La marca fina sobre cada barra es el porcentaje bruto."
+            >
+              {tabla.length === 0 ? (
+                <Vacio>Sin datos todavía.</Vacio>
+              ) : (
+                <div className="space-y-5">
+                  {barras.length > 0 ? (
+                    <BarrasH datos={barras} max={100} referencia={50} etiquetaReferencia="50%" />
+                  ) : null}
 
-      {(['white', 'black'] as const).map((color) => {
-        const barras = peores(color);
-        const tabla = porColor(color);
-        return (
-          <Panel
-            key={color}
-            title={color === 'white' ? 'Con blancas' : 'Con negras'}
-            subtitle="Las peores primero. La marca fina sobre cada barra es el porcentaje bruto."
-          >
-            {tabla.length === 0 ? (
-              <Vacio>Sin datos todavía.</Vacio>
-            ) : (
-              <div className="space-y-5">
-                {barras.length > 0 ? (
-                  <BarrasH datos={barras} max={100} referencia={50} etiquetaReferencia="50%" />
-                ) : null}
-
-                <details className="group">
-                  <summary className="cursor-pointer list-none text-xs text-tenue hover:text-texto">
-                    <span className="group-open:hidden">▸ Ver la tabla completa</span>
-                    <span className="hidden group-open:inline">▾ Ocultar la tabla</span>
-                  </summary>
-                  <div className="mt-3">
-                    <Tabla
-                      aligns={['text', 'text', 'text', 'num', 'num']}
-                      headers={[
-                        <SortableTh
-                          key="name"
-                          label="Apertura"
-                          sortKey="name"
-                          currentSort={sort}
-                          currentDir={dir}
-                          href={link}
-                        />,
-                        <span key="eco">
-                          ECO
-                          <Ayuda>
-                            Código estándar de apertura (Encyclopaedia of Chess Openings). Chessito
-                            no agrupa por este código porque mezcla líneas muy distintas — se
-                            muestra solo como referencia.
-                          </Ayuda>
-                        </span>,
-                        'Tipo',
-                        <span key="rendimiento" className="inline-flex items-center">
+                  <details className="group">
+                    <summary className="cursor-pointer list-none text-xs text-tenue hover:text-texto">
+                      <span className="group-open:hidden">▸ Ver la tabla completa</span>
+                      <span className="hidden group-open:inline">▾ Ocultar la tabla</span>
+                    </summary>
+                    <div className="mt-3">
+                      <Tabla
+                        aligns={['text', 'text', 'text', 'num', 'num']}
+                        headers={[
                           <SortableTh
-                            label="Rendimiento"
-                            sortKey="wilson"
+                            key="name"
+                            label="Apertura"
+                            sortKey="name"
                             currentSort={sort}
                             currentDir={dir}
                             href={link}
-                          />
-                          {AYUDA_RENDIMIENTO}
-                        </span>,
-                        <span key="divergencia" className="inline-flex items-center">
-                          Divergencia
-                          <Ayuda alinear="der">
-                            La jugada (ply) donde tu evaluación empezó a caer de forma sostenida en
-                            esta apertura, según el motor. Más bajo = te desvías antes de la teoría.
-                          </Ayuda>
-                        </span>,
-                      ]}
-                    >
-                      {tabla.map((f) => {
-                        const n = f.n ?? 0;
-                        return (
-                          <Fila
-                            key={`${f.opening_id ?? 'null'}-${f.time_class}-${color}`}
-                            atenuada={n < 20}
-                          >
-                            <Td>{f.opening_name}</Td>
-                            <Td className="tabular-nums text-tenue">{f.eco ?? '—'}</Td>
-                            <Td>
-                              <Badge>{f.time_class}</Badge>
-                            </Td>
-                            <Td num>
-                              <Rendimiento pctValue={f.score_pct} wilson={f.score_pct_lower} n={n} />
-                            </Td>
-                            <Td num>
-                              {f.median_divergence_ply === null
-                                ? '—'
-                                : `ply ${Math.round(f.median_divergence_ply)}`}
-                            </Td>
-                          </Fila>
-                        );
-                      })}
-                    </Tabla>
-                  </div>
-                </details>
-              </div>
-            )}
-          </Panel>
-        );
-      })}
+                          />,
+                          <span key="eco">
+                            ECO
+                            <Ayuda>
+                              Código estándar de apertura (Encyclopaedia of Chess Openings). Chessito
+                              no agrupa por este código porque mezcla líneas muy distintas — se
+                              muestra solo como referencia.
+                            </Ayuda>
+                          </span>,
+                          'Tipo',
+                          <span key="rendimiento" className="inline-flex items-center">
+                            <SortableTh
+                              label="Rendimiento"
+                              sortKey="wilson"
+                              currentSort={sort}
+                              currentDir={dir}
+                              href={link}
+                            />
+                            {AYUDA_RENDIMIENTO}
+                          </span>,
+                          <span key="divergencia" className="inline-flex items-center">
+                            Divergencia
+                            <Ayuda alinear="der">
+                              La jugada (ply) donde tu evaluación empezó a caer de forma sostenida en
+                              esta apertura, según el motor. Más bajo = te desvías antes de la teoría.
+                            </Ayuda>
+                          </span>,
+                        ]}
+                      >
+                        {tabla.map((f) => {
+                          const n = f.n ?? 0;
+                          return (
+                            <Fila
+                              key={`${f.opening_id ?? 'null'}-${f.time_class}-${color}`}
+                              atenuada={n < 20}
+                            >
+                              <Td>{f.opening_name}</Td>
+                              <Td className="tabular-nums text-tenue">{f.eco ?? '—'}</Td>
+                              <Td>
+                                <Badge>{f.time_class}</Badge>
+                              </Td>
+                              <Td num>
+                                <Rendimiento pctValue={f.score_pct} wilson={f.score_pct_lower} n={n} />
+                              </Td>
+                              <Td num>
+                                {f.median_divergence_ply === null
+                                  ? '—'
+                                  : `ply ${Math.round(f.median_divergence_ply)}`}
+                              </Td>
+                            </Fila>
+                          );
+                        })}
+                      </Tabla>
+                    </div>
+                  </details>
+                </div>
+              )}
+            </Panel>
+          );
+        })}
 
-      <p className="text-xs text-tenue">
-        El estado del cargador de aperturas (partidas sin resolver por EPD) está en{' '}
-        <Link href="/salud" className="text-acento hover:underline">
-          Salud
-        </Link>
-        .
-      </p>
-    </div>
+        <p className="text-xs text-tenue">
+          El estado del cargador de aperturas (partidas sin resolver por EPD) está en{' '}
+          <Link href="/salud" className="text-acento hover:underline">
+            Salud
+          </Link>
+          .
+        </p>
+      </div>
+    </Pagina>
   );
 }
