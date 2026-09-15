@@ -74,7 +74,7 @@ describe('UciEngine', () => {
 
     expect(process.written).toContain('position startpos moves e2e4 e7e5\n');
     expect(process.written).toContain('go nodes 800000\n');
-    expect(result).toEqual({ scoreCp: 34, mateIn: null, bestUci: 'd2d4' });
+    expect(result).toEqual({ scoreCp: 34, mateIn: null, bestUci: 'd2d4', pv: ['d2d4', 'd7d5'] });
   });
 
   it('evaluate() sin jugadas previas manda position startpos sin "moves"', async () => {
@@ -100,7 +100,7 @@ describe('UciEngine', () => {
     process.emit('bestmove g1f3');
     const result = await evalPromise;
 
-    expect(result).toEqual({ scoreCp: null, mateIn: 3, bestUci: 'g1f3' });
+    expect(result).toEqual({ scoreCp: null, mateIn: 3, bestUci: 'g1f3', pv: [] });
   });
 
   it('evaluate() deja bestUci en null cuando la posicion no tiene jugadas legales ("bestmove (none)")', async () => {
@@ -116,6 +116,50 @@ describe('UciEngine', () => {
     const result = await evalPromise;
 
     expect(result.bestUci).toBeNull();
+  });
+
+  it('evaluate() se queda con la linea principal COMPLETA, no solo con la primera jugada', async () => {
+    // Es lo que habilita el ejercicio de varias jugadas y la explicacion: la linea que sigue a
+    // un blunder es como te castigaba el rival.
+    const { engine, process } = startedEngine();
+    process.emit('uciok');
+    await engine.start();
+
+    const evalPromise = engine.evaluate(['e2e4'], 800000);
+    process.emit('info depth 20 score cp -310 nodes 800000 pv d8h4 e1e2 h4e4 e2f1 e4h1');
+    process.emit('bestmove d8h4');
+    const result = await evalPromise;
+
+    expect(result.pv).toEqual(['d8h4', 'e1e2', 'h4e4', 'e2f1', 'e4h1']);
+    expect(result.bestUci).toBe('d8h4');
+  });
+
+  it('evaluate() ignora los campos de info posteriores que no son jugadas', async () => {
+    // `pv` es el ultimo campo de un info por especificacion UCI, pero el filtro por forma de
+    // jugada evita que cualquier ruido del motor entre a la linea.
+    const { engine, process } = startedEngine();
+    process.emit('uciok');
+    await engine.start();
+
+    const evalPromise = engine.evaluate([], 800000);
+    process.emit('info depth 12 score cp 20 hashfull 431 tbhits 0 pv e2e4 e7e5 g1f3');
+    process.emit('bestmove e2e4');
+    const result = await evalPromise;
+
+    expect(result.pv).toEqual(['e2e4', 'e7e5', 'g1f3']);
+  });
+
+  it('evaluate() reconoce la promocion en la linea principal', async () => {
+    const { engine, process } = startedEngine();
+    process.emit('uciok');
+    await engine.start();
+
+    const evalPromise = engine.evaluate([], 800000);
+    process.emit('info depth 30 score mate 2 pv a7a8q b8a8 h1h8');
+    process.emit('bestmove a7a8q');
+    const result = await evalPromise;
+
+    expect(result.pv).toEqual(['a7a8q', 'b8a8', 'h1h8']);
   });
 
   it('buildEngineId combina nombre, nodos e hilos sin hardcodear nada', async () => {
@@ -142,8 +186,8 @@ describe('UciEngine', () => {
 
     expect(process.written).toContain('setoption name MultiPV value 2\n');
     expect(result).toEqual([
-      { scoreCp: 44, mateIn: null, bestUci: 'e7e5' },
-      { scoreCp: 30, mateIn: null, bestUci: 'c7c5' },
+      { scoreCp: 44, mateIn: null, bestUci: 'e7e5', pv: ['e7e5', 'g1f3', 'b8c6'] },
+      { scoreCp: 30, mateIn: null, bestUci: 'c7c5', pv: ['c7c5', 'g1f3', 'd7d6'] },
     ]);
     expect(process.written).toContain('setoption name MultiPV value 1\n');
   });
@@ -160,8 +204,8 @@ describe('UciEngine', () => {
     const result = await evalPromise;
 
     expect(result).toEqual([
-      { scoreCp: null, mateIn: 2, bestUci: 'd1h5' },
-      { scoreCp: -50, mateIn: null, bestUci: 'b8c6' },
+      { scoreCp: null, mateIn: 2, bestUci: 'd1h5', pv: ['d1h5', 'g7g6'] },
+      { scoreCp: -50, mateIn: null, bestUci: 'b8c6', pv: ['b8c6'] },
     ]);
   });
 
@@ -175,7 +219,7 @@ describe('UciEngine', () => {
     process.emit('bestmove e2e4');
     const result = await evalPromise;
 
-    expect(result).toEqual([{ scoreCp: 20, mateIn: null, bestUci: 'e2e4' }]);
+    expect(result).toEqual([{ scoreCp: 20, mateIn: null, bestUci: 'e2e4', pv: ['e2e4'] }]);
   });
 
   it('quit() manda el comando y mata el proceso', async () => {

@@ -7,6 +7,12 @@
  * Uso:
  *   pnpm puzzles:build              lote de 200 candidatos (default)
  *   pnpm puzzles:build --batch 50   lote mas chico
+ *   pnpm puzzles:enrich             rellena las lineas de los ejercicios ya construidos
+ *
+ * El modo `--enrich` existe por la migracion 0007: los ejercicios de la Fase 4 se guardaron sin
+ * `solution_line` ni `refutation_line`, que es lo que el entrenador necesita para explicar por
+ * que una jugada fue mala. Corre el motor solo sobre esos y NO toca su progreso de repeticion
+ * espaciada.
  */
 import { config } from 'dotenv';
 import { assertEnv, appEnv } from '@/lib/env';
@@ -33,6 +39,7 @@ async function main(): Promise<void> {
   const nodes = Number.parseInt(process.env['ENGINE_NODES'] ?? '800000', 10);
   const threads = Number.parseInt(process.env['ENGINE_THREADS'] ?? '1', 10);
   const batchSize = Number.parseInt(arg('--batch', '200'), 10);
+  const modo = process.argv.includes('--enrich') ? 'enriquecer' : 'construir';
   const trigger = process.env['GITHUB_ACTIONS'] === 'true' ? 'workflow_dispatch' : 'manual';
 
   const engine = new UciEngine(stockfishPath);
@@ -49,10 +56,12 @@ async function main(): Promise<void> {
       batchSize,
       environment: appEnv(),
       trigger,
+      modo,
     });
 
     console.log(
       JSON.stringify({
+        modo,
         job_run_id: summary.jobRunId,
         status: summary.status,
         procesados: summary.processed,

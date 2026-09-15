@@ -284,6 +284,9 @@ export type Database = {
           correct: boolean
           ms_taken: number | null
           attempted_at: string
+          played_uci: string | null
+          attempt_no: number
+          hint_used: boolean
         }
         Insert: {
           id?: number
@@ -291,6 +294,9 @@ export type Database = {
           correct: boolean
           ms_taken?: number | null
           attempted_at?: string
+          played_uci?: string | null
+          attempt_no?: number
+          hint_used?: boolean
         }
         Update: {
           id?: number
@@ -298,6 +304,9 @@ export type Database = {
           correct?: boolean
           ms_taken?: number | null
           attempted_at?: string
+          played_uci?: string | null
+          attempt_no?: number
+          hint_used?: boolean
         }
         Relationships: [
           {
@@ -325,6 +334,13 @@ export type Database = {
           interval_days: number
           ease: number
           lapses: number
+          my_color: Database["public"]["Enums"]["game_color"] | null
+          solution_line: string[] | null
+          refutation_line: string[] | null
+          eval_best_cp: number | null
+          eval_played_cp: number | null
+          second_best_uci: string | null
+          second_best_cp: number | null
         }
         Insert: {
           id?: number
@@ -341,6 +357,13 @@ export type Database = {
           interval_days?: number
           ease?: number
           lapses?: number
+          my_color?: Database["public"]["Enums"]["game_color"] | null
+          solution_line?: string[] | null
+          refutation_line?: string[] | null
+          eval_best_cp?: number | null
+          eval_played_cp?: number | null
+          second_best_uci?: string | null
+          second_best_cp?: number | null
         }
         Update: {
           id?: number
@@ -357,6 +380,13 @@ export type Database = {
           interval_days?: number
           ease?: number
           lapses?: number
+          my_color?: Database["public"]["Enums"]["game_color"] | null
+          solution_line?: string[] | null
+          refutation_line?: string[] | null
+          eval_best_cp?: number | null
+          eval_played_cp?: number | null
+          second_best_uci?: string | null
+          second_best_cp?: number | null
         }
         Relationships: [
           {

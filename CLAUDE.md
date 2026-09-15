@@ -512,6 +512,89 @@ mostrar el resultado: minutos+incremento (`"2+1"`), minutos solos (`"10 min"`), 
 `"-"` ("vs coach") de la correspondencia real (`"1/86400"` → "correspondencia") aunque ambos
 compartan `isCorrespondence`. 100% de cobertura, `tests/timecontrol.test.ts`.
 
+## Estado al terminar la Fase 6
+
+Rediseño de producto sobre el backend ya terminado, a partir de tres quejas del uso real: "está
+bastante discreto todo, es estéticamente feo", y sobre el entrenador, "los ejercicios son solo un
+movimiento, si me equivoco no puedo intentarlo de nuevo, ni me explica por qué me equivoqué".
+Una migración nueva (`0007_entrenador.sql`) y una página nueva (`/partida/[id]`).
+
+| Pieza | Dónde |
+|---|---|
+| Sistema de diseño (tokens, escalas, componentes) | `app/globals.css`, `components/ui/` |
+| Nav con ruta activa y menú de celular | `components/Nav.tsx` |
+| Geometría de gráficos, pura y testeada | `lib/charts/` (`scale.ts`, `path.ts`) |
+| Gráficos | `components/charts/` (`BarrasH`, `BarrasV`, `Sparkline`, `EvalChart`) |
+| Explicación del error, pura y testeada | `lib/puzzles/explain.ts` |
+| Precisión 0-100, pura y testeada | `lib/analysis/accuracy.ts` |
+| Revisión de partida | `app/partida/[id]/page.tsx`, `components/GameReview.tsx` |
+
+**Los colores de gráfico salieron de un validador, no del ojo.** El trío de serie
+(`#3987e5`/`#d95926`/`#199e70`) pasa las cinco verificaciones de contraste y daltonismo contra
+`--color-panel`, en modo "todos los pares". El hallazgo útil fue el contrario: los tres colores de
+clasificación (imprecisión amarillo / error naranja / grave rojo) **no** pasan — miden dE 5.5 entre
+sí con deuteranopia. Por eso `Clasificacion` lleva **siempre** glifo (`?!` `?` `??`) y texto, y el
+color es solo refuerzo. Si agregas un color de dato, córrelo por el validador antes.
+
+**Una serie, un color.** Pintar cada barra según si su valor es alto o bajo es colorear por
+ranking: hace que el mismo dato cambie de color cuando cambia el filtro, y le roba el trabajo a la
+longitud de la barra. La comparación la hacen el largo y la línea de referencia. Los colores de
+estado quedan reservados para estados de verdad, que además siempre llevan texto.
+
+**Las tablas no se borraron al agregar gráficos.** Cada gráfico tiene su tabla detrás de un
+"ver la tabla completa": el gráfico responde "¿cuál es peor?" de un vistazo y la tabla responde
+"¿cuánto exactamente?". Es también la vista accesible.
+
+**`min-w-0` en `Panel` no es decorativo.** Un item de grid o flex tiene `min-width: auto`, así que
+un panel con una tabla ancha adentro **crece** en vez de dejarla scrollear, y termina empujando el
+ancho de la página entera en celular. Apareció midiendo `scrollWidth` a 400px, no leyendo el CSS.
+
+**El motor ya calculaba la línea completa y se tiraba.** `lib/engine/uci.ts` leía el campo `pv` de
+cada `info` y se quedaba solo con el primer token. `EvalResult.pv` ahora trae la línea entera, y
+eso es lo que habilita las tres cosas del entrenador: ejercicio de varias jugadas, respuesta
+automática del rival, y explicación. `runBuildPuzzles` agrega **una** llamada más al motor por
+ejercicio: evaluar la posición DESPUÉS del blunder, cuyo PV *es* la refutación.
+
+**La explicación es determinista, no un LLM.** `lib/puzzles/explain.ts` reproduce la línea de
+refutación sobre el tablero y cuenta lo que pasa: qué se captura, cuánto material cambia de manos,
+si termina en mate. Devuelve una estructura, no frases armadas, así que se testea con posiciones
+reales (el mate del pastor, entre otras) sin comparar strings. Cero costo por ejercicio, cero
+riesgo de alucinar sobre una posición.
+
+**SM-2 califica por acierto al primer intento sin pista, no por acierto a secas.** Es lo que
+mantiene honesta la repetición espaciada ahora que se puede reintentar: si el tercer intento
+contara igual, un ejercicio fallado tres veces se programaría como si se supiera y dejaría de
+aparecer. Cada intento se guarda igual, con la jugada que se probó — antes solo se guardaba un
+booleano y no había forma de saber qué error se repite.
+
+**Reintentar y explicar NO son gamificación.** La regla de la Fase 4 (*sin gamificación, rachas ni
+notificaciones*) sigue en pie y no se agregó ninguna de esas tres. Lo que se agregó es lo que hace
+que el ejercicio enseñe algo en vez de solo puntuar.
+
+**Los ejercicios con más de una jugada buena volvieron a servirse.** `puzzles_due_idx` era parcial
+`where is_unique`, así que se construían pagando tiempo de motor y después eran invisibles. Ahora
+se sirven etiquetados, y el filtro de calidad lo decide la consulta, no el índice.
+
+**El eje y del gráfico de evaluación es win%, no centipeones.** Los centipeones no están acotados
+(un mate vale 10.000), así que en escala lineal el 95% de la partida queda aplastado contra el
+cero. Es la misma función `winPct` que ya usaba el analizador.
+
+**La precisión 0-100 se declara como cálculo propio.** Usa la fórmula pública de Lichess sobre el
+win% de cada jugada, promedio simple, excluyendo libro y posiciones decididas. Correlaciona con la
+precisión de chess.com pero **no** coincide: ellos usan CAPS, que es cerrada. Se muestra junto al
+ACPL diciendo exactamente eso.
+
+**Backfill pendiente.** Los ejercicios construidos antes de 0007 quedan con `solution_line` y
+`refutation_line` en NULL y la UI degrada avisando. Se rellenan con `pnpm puzzles:enrich` (o el
+workflow `puzzles` con modo `enriquecer`), que corre el motor solo sobre ellos y **no** toca su
+progreso de repetición espaciada.
+
+**Verificado en el navegador, no solo con tests.** Las cuatro etapas se revisaron manejando la app
+a 1280px y a 400px. Cuatro fallas aparecieron solo así: etiquetas de valor chocando con el final
+de la barra, el desborde horizontal del `min-w-0`, "Nf6" convertido en "NF6" por un `uppercase`
+(en notación de ajedrez la caja es significativa), y la lista de jugadas que no seguía a la jugada
+activa.
+
 ## Convenciones
 
 - Todo acceso a datos es del lado servidor: Server Components y route handlers. Nada de

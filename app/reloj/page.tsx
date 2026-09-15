@@ -1,10 +1,17 @@
 import { moveTimeByPhase, moveTimeByPly, moveTimeDistribution, timeoutMoment } from '@/lib/data';
-import { Ayuda, Panel, Tabla, Vacio, filaAtenuada, pct } from '@/components/ui';
+import { Ayuda, Badge, EmptyState, Fila, PageHeader, Panel, Stat, Tabla, Td, pct } from '@/components/ui';
+import { BarrasH, type BarraH } from '@/components/charts/BarrasH';
+import { BarrasV, type BarraV } from '@/components/charts/BarrasV';
 
 export const dynamic = 'force-dynamic';
 
 const NOMBRE_FASE: Record<number, string> = { 0: 'Apertura', 1: 'Medio juego', 2: 'Final' };
 const ORDEN_BUCKET = ['<3s', '3-10s', '10-30s', '>30s'] as const;
+
+function segundos(ms: number | null): string {
+  if (ms === null) return '—';
+  return `${(ms / 1000).toFixed(1)}s`;
+}
 
 const AYUDA_N = (
   <Ayuda>
@@ -12,16 +19,16 @@ const AYUDA_N = (
     observaciones el patrón puede ser casualidad.
   </Ayuda>
 );
-const COL_N = <span key="n" className="inline-flex items-center">n{AYUDA_N}</span>;
-
-function segundos(ms: number | null): string {
-  if (ms === null) return '—';
-  return `${(ms / 1000).toFixed(1)}s`;
-}
+const COL_N = (
+  <span key="n" className="inline-flex items-center">
+    n{AYUDA_N}
+  </span>
+);
 
 /**
- * Pregunta 4 (parcial, se completa en Fase 3): uso del reloj. Nada de esto necesita el motor,
- * sale de `moves.move_time_ms` y `moves.phase`, poblados por `pnpm moves:extract`.
+ * Pregunta 4: uso del reloj. Sale de `moves.move_time_ms` y `moves.phase`, poblados por
+ * `pnpm moves:extract`; la clasificacion de si esas jugadas rapidas fueron buenas o malas la
+ * cruza /errores.
  */
 export default async function RelojPage() {
   const [porJugada, porFase, distribucion, timeouts] = await Promise.all([
@@ -33,124 +40,156 @@ export default async function RelojPage() {
 
   const totalTimeouts = timeouts.reduce((acc, t) => acc + (t.n_games ?? 0), 0);
 
+  // "Donde piensa": tiempo promedio jugada a jugada. Es la forma de la curva lo que importa,
+  // no el valor exacto de cada ply, asi que una columna por ply se lee mejor que 60 filas.
+  const columnasPly: BarraV[] = porJugada
+    .sort((a, b) => (a.ply ?? 0) - (b.ply ?? 0))
+    .map((p) => ({
+      etiqueta: String(p.ply),
+      valor: p.avg_move_time_ms === null ? null : p.avg_move_time_ms / 1000,
+      n: p.n ?? 0,
+      titulo: `Ply ${p.ply} · n=${p.n} · promedio ${segundos(p.avg_move_time_ms)} · mediana ${segundos(p.median_move_time_ms)}`,
+    }));
+  const maxPly = Math.max(1, ...columnasPly.map((c) => c.valor ?? 0));
+
+  const totalDistribucion = distribucion.reduce((acc, d) => acc + (d.n ?? 0), 0);
+  const barrasDistribucion: BarraH[] = ORDEN_BUCKET.map((bucket) => {
+    const n = distribucion.filter((d) => d.time_bucket === bucket).reduce((acc, d) => acc + (d.n ?? 0), 0);
+    const proporcion = totalDistribucion > 0 ? (n / totalDistribucion) * 100 : 0;
+    return {
+      etiqueta: bucket,
+      valor: proporcion,
+      texto: `${proporcion.toFixed(1)}%`,
+      titulo: `${bucket} · ${n.toLocaleString('es-CL')} jugadas`,
+    };
+  });
+
+  const bajo3s = barrasDistribucion.find((b) => b.etiqueta === '<3s')?.valor ?? 0;
+
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-xl font-semibold">Reloj</h1>
-        <p className="mt-1 text-sm text-[var(--color-tenue)]">
-          Donde piensa Gabriel. Sin motor todavia: la clasificacion de si esas jugadas rapidas
-          fueron buenas o malas la agrega la Fase 3. Toda fila muestra su n.
-        </p>
-      </header>
+      <PageHeader titulo="Reloj">
+        Dónde piensas y dónde te apuras. El cruce con la calidad de esas jugadas — si las rápidas
+        son además las malas — está en Errores.
+      </PageHeader>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Stat
+          etiqueta="Jugadas bajo 3 segundos"
+          valor={`${bajo3s.toFixed(1)}%`}
+          detalle={`de ${totalDistribucion.toLocaleString('es-CL')} jugadas con reloj`}
+          tono={bajo3s > 50 ? 'critico' : undefined}
+        />
+        <Stat
+          etiqueta="Derrotas por tiempo"
+          valor={totalTimeouts.toLocaleString('es-CL')}
+          detalle="partidas perdidas con el reloj en cero"
+        />
+        <Stat
+          etiqueta="Jugadas medidas"
+          valor={porJugada.reduce((acc, p) => acc + (p.n ?? 0), 0).toLocaleString('es-CL')}
+          detalle="hasta el ply 60"
+        />
+      </div>
 
       <Panel
-        title="Por fase"
-        subtitle="Porcentaje de jugadas bajo 3 segundos, con la cota inferior de Wilson"
+        title="Dónde se va el tiempo"
+        subtitle="Tiempo promedio por número de jugada (ply), hasta el 60"
       >
-        {porFase.length === 0 ? (
-          <Vacio>Sin jugadas extraidas todavia. Corre `pnpm moves:extract`.</Vacio>
+        {porJugada.length === 0 ? (
+          <EmptyState
+            titulo="Sin jugadas extraídas todavía"
+            detalle="Corre `pnpm moves:extract` para poblar la tabla de jugadas desde el PGN."
+          />
         ) : (
-          <Tabla headers={['Fase', COL_N, 'Tiempo promedio', '% bajo 3s (Wilson)']}>
-            {porFase.map((f) => {
-              const n = f.n ?? 0;
-              const fase = f.phase ?? 0;
-              return (
-                <tr key={fase} className={`border-b border-[var(--color-borde)]/50 ${filaAtenuada(n)}`}>
-                  <td className="py-1.5 pr-3">{NOMBRE_FASE[fase] ?? fase}</td>
-                  <td className="py-1.5 pr-3 tabular-nums">{n}</td>
-                  <td className="py-1.5 pr-3 tabular-nums">{segundos(f.avg_move_time_ms)}</td>
-                  <td className="py-1.5 pr-3 tabular-nums">{pct(f.pct_under_3s_lower)}</td>
-                </tr>
-              );
-            })}
-          </Tabla>
-        )}
-      </Panel>
-
-      <Panel
-        title="Distribucion de tiempos, por fase"
-        subtitle="Cuantas jugadas caen en cada rango de tiempo"
-      >
-        {distribucion.length === 0 ? (
-          <Vacio>Sin jugadas extraidas todavia.</Vacio>
-        ) : (
-          <div className="space-y-4">
-            {[0, 1, 2].map((fase) => {
-              const filas = distribucion.filter((d) => d.phase === fase);
-              if (filas.length === 0) return null;
-              const total = filas.reduce((acc, f) => acc + (f.n ?? 0), 0);
-              return (
-                <div key={fase}>
-                  <h3 className="mb-1 text-xs uppercase tracking-wide text-[var(--color-tenue)]">
-                    {NOMBRE_FASE[fase]}
-                  </h3>
-                  <Tabla headers={['Rango', COL_N, '% de la fase']}>
-                    {ORDEN_BUCKET.map((bucket) => {
-                      const fila = filas.find((f) => f.time_bucket === bucket);
-                      const n = fila?.n ?? 0;
-                      return (
-                        <tr key={bucket} className={`border-b border-[var(--color-borde)]/50 ${filaAtenuada(n)}`}>
-                          <td className="py-1.5 pr-3">{bucket}</td>
-                          <td className="py-1.5 pr-3 tabular-nums">{n}</td>
-                          <td className="py-1.5 pr-3 tabular-nums">{pct(total > 0 ? n / total : null)}</td>
-                        </tr>
-                      );
-                    })}
-                  </Tabla>
-                </div>
-              );
-            })}
+          <div className="space-y-5">
+            <BarrasV datos={columnasPly} max={maxPly} unidad="s" alto="h-32" cadaCuantasEtiquetas={5} />
+            <p className="text-2xs text-apagado">Segundos promedio por jugada · eje x: ply</p>
+            <details className="group">
+              <summary className="cursor-pointer list-none text-xs text-tenue hover:text-texto">
+                <span className="group-open:hidden">▸ Ver la tabla completa</span>
+                <span className="hidden group-open:inline">▾ Ocultar la tabla</span>
+              </summary>
+              <div className="mt-3">
+                <Tabla aligns={['num', 'num', 'num', 'num']} headers={['Ply', COL_N, 'Promedio', 'Mediana']}>
+                  {porJugada.map((p) => {
+                    const n = p.n ?? 0;
+                    return (
+                      <Fila key={p.ply} atenuada={n < 20}>
+                        <Td num>{p.ply}</Td>
+                        <Td num>{n.toLocaleString('es-CL')}</Td>
+                        <Td num>{segundos(p.avg_move_time_ms)}</Td>
+                        <Td num>{segundos(p.median_move_time_ms)}</Td>
+                      </Fila>
+                    );
+                  })}
+                </Tabla>
+              </div>
+            </details>
           </div>
         )}
       </Panel>
 
-      <Panel
-        title="Tiempo por numero de jugada"
-        subtitle="Tiempo promedio y mediana, jugada a jugada (hasta el ply 60)"
-      >
-        {porJugada.length === 0 ? (
-          <Vacio>Sin jugadas extraidas todavia.</Vacio>
-        ) : (
-          <div className="overflow-x-auto">
-            <Tabla headers={['Ply', COL_N, 'Promedio', 'Mediana']}>
-              {porJugada.map((p) => {
-                const n = p.n ?? 0;
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Panel title="Distribución de tiempos" subtitle="Qué proporción de tus jugadas cae en cada rango">
+          {distribucion.length === 0 ? (
+            <EmptyState titulo="Sin jugadas extraídas todavía" />
+          ) : (
+            <BarrasH datos={barrasDistribucion} max={100} />
+          )}
+        </Panel>
+
+        <Panel title="Por fase" subtitle="Porcentaje de jugadas bajo 3 segundos, con la cota de Wilson">
+          {porFase.length === 0 ? (
+            <EmptyState titulo="Sin jugadas extraídas todavía" />
+          ) : (
+            <Tabla
+              aligns={['text', 'num', 'num', 'num']}
+              headers={['Fase', COL_N, 'Tiempo promedio', '% bajo 3s']}
+            >
+              {porFase.map((f) => {
+                const n = f.n ?? 0;
+                const fase = f.phase ?? 0;
                 return (
-                  <tr key={p.ply} className={`border-b border-[var(--color-borde)]/50 ${filaAtenuada(n)}`}>
-                    <td className="py-1.5 pr-3 tabular-nums">{p.ply}</td>
-                    <td className="py-1.5 pr-3 tabular-nums">{n}</td>
-                    <td className="py-1.5 pr-3 tabular-nums">{segundos(p.avg_move_time_ms)}</td>
-                    <td className="py-1.5 pr-3 tabular-nums">{segundos(p.median_move_time_ms)}</td>
-                  </tr>
+                  <Fila key={fase} atenuada={n < 20}>
+                    <Td>{NOMBRE_FASE[fase] ?? fase}</Td>
+                    <Td num>{n.toLocaleString('es-CL')}</Td>
+                    <Td num>{segundos(f.avg_move_time_ms)}</Td>
+                    <Td num>{pct(f.pct_under_3s_lower)}</Td>
+                  </Fila>
                 );
               })}
             </Tabla>
-          </div>
-        )}
-      </Panel>
+          )}
+        </Panel>
+      </div>
 
       <Panel
-        title="Se le acaba el tiempo"
-        subtitle="En que fase estaba jugando en las derrotas por tiempo (termination = timeout)"
+        title="Se te acaba el tiempo"
+        subtitle="En qué fase estabas jugando en las derrotas por tiempo"
       >
         {timeouts.length === 0 ? (
-          <Vacio>Sin derrotas por tiempo registradas todavia.</Vacio>
+          <EmptyState titulo="Sin derrotas por tiempo registradas todavía" />
         ) : (
-          <Tabla headers={['Fase', COL_N, 'Ply promedio de la ultima jugada']}>
+          <Tabla
+            aligns={['text', 'num', 'num']}
+            headers={['Fase', COL_N, 'Ply promedio de la última jugada']}
+          >
             {timeouts.map((t) => {
               const n = t.n_games ?? 0;
               const fase = t.phase ?? 0;
               return (
-                <tr key={fase} className={`border-b border-[var(--color-borde)]/50 ${filaAtenuada(n)}`}>
-                  <td className="py-1.5 pr-3">{NOMBRE_FASE[fase] ?? fase}</td>
-                  <td className="py-1.5 pr-3 tabular-nums">{n}</td>
-                  <td className="py-1.5 pr-3 tabular-nums">{t.avg_ply ?? '—'}</td>
-                </tr>
+                <Fila key={fase} atenuada={n < 20}>
+                  <Td>
+                    <Badge tono={n > 0 ? 'critico' : 'neutro'}>{NOMBRE_FASE[fase] ?? fase}</Badge>
+                  </Td>
+                  <Td num>{n.toLocaleString('es-CL')}</Td>
+                  <Td num>{t.avg_ply ?? '—'}</Td>
+                </Fila>
               );
             })}
           </Tabla>
         )}
-        <p className="mt-2 text-xs text-[var(--color-tenue)]">{totalTimeouts} derrotas por tiempo en total.</p>
       </Panel>
     </div>
   );

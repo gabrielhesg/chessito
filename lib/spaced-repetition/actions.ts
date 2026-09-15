@@ -14,32 +14,57 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { log } from '@/lib/log';
 import { nextReview } from './sm2';
 
-export async function recordAttempt(puzzleId: number, correct: boolean, msTaken: number): Promise<void> {
+export type Intento = {
+  puzzleId: number;
+  /** La jugada intentada. Sin esto no hay forma de saber que error se repite. */
+  playedUci: string;
+  correct: boolean;
+  msTaken: number;
+  /** 1 para el primer intento del ejercicio en esta sesion, 2 para el segundo, etc. */
+  attemptNo: number;
+  hintUsed: boolean;
+};
+
+/**
+ * Cada intento se guarda, pero la repeticion espaciada SOLO se actualiza al cerrar el ejercicio
+ * (`cierra: true`), y se califica por si se acerto **al primer intento sin pista**. Es lo que
+ * mantiene honesto el SM-2: si reintentar contara como acierto, un ejercicio fallado tres veces
+ * y acertado a la cuarta se programaria como si se supiera, y dejaria de aparecer.
+ */
+export async function recordAttempt(intento: Intento & { cierra: boolean }): Promise<void> {
   const client = supabaseAdmin();
+
+  const { error: attemptError } = await client.from('puzzle_attempts').insert({
+    puzzle_id: intento.puzzleId,
+    correct: intento.correct,
+    ms_taken: intento.msTaken,
+    played_uci: intento.playedUci,
+    attempt_no: intento.attemptNo,
+    hint_used: intento.hintUsed,
+  });
+  if (attemptError) {
+    log.error('No se pudo registrar el intento', { puzzleId: intento.puzzleId, error: attemptError.message });
+  }
+
+  if (!intento.cierra) return;
 
   const { data: puzzle, error: fetchError } = await client
     .from('puzzles')
     .select('ease, interval_days, lapses')
-    .eq('id', puzzleId)
+    .eq('id', intento.puzzleId)
     .single();
   if (fetchError || !puzzle) {
     log.error('No se pudo leer el ejercicio para actualizar su repeticion espaciada', {
-      puzzleId,
+      puzzleId: intento.puzzleId,
       error: fetchError?.message,
     });
     return;
   }
 
-  const { error: attemptError } = await client
-    .from('puzzle_attempts')
-    .insert({ puzzle_id: puzzleId, correct, ms_taken: msTaken });
-  if (attemptError) {
-    log.error('No se pudo registrar el intento', { puzzleId, error: attemptError.message });
-  }
-
+  const limpio = intento.correct && intento.attemptNo === 1 && !intento.hintUsed;
   const result = nextReview(
     { ease: puzzle.ease, intervalDays: puzzle.interval_days, lapses: puzzle.lapses },
-    correct,
+    limpio,
     new Date(),
   );
 
@@ -51,10 +76,10 @@ export async function recordAttempt(puzzleId: number, correct: boolean, msTaken:
       ease: result.ease,
       lapses: result.lapses,
     })
-    .eq('id', puzzleId);
+    .eq('id', intento.puzzleId);
   if (updateError) {
     log.error('No se pudo actualizar la repeticion espaciada del ejercicio', {
-      puzzleId,
+      puzzleId: intento.puzzleId,
       error: updateError.message,
     });
   }

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { Nav } from '@/components/Nav';
 import { envLabel } from '@/lib/env';
 import './globals.css';
 
@@ -8,17 +9,6 @@ export const metadata: Metadata = {
   description: 'Analisis de mis partidas de chess.com',
 };
 
-const NAV = [
-  { href: '/', label: 'Portada' },
-  { href: '/aperturas', label: 'Aperturas' },
-  { href: '/ritmo', label: 'Ritmo' },
-  { href: '/reloj', label: 'Reloj' },
-  { href: '/errores', label: 'Errores' },
-  { href: '/entrenador', label: 'Entrenador' },
-  { href: '/registro', label: 'Registro' },
-  { href: '/salud', label: 'Salud' },
-] as const;
-
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   // Etiqueta visible cuando NO es produccion: un preview identico a produccion es la receta
   // para tomar decisiones sobre datos equivocados (docs/ENVIRONMENTS.md).
@@ -26,25 +16,24 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
   return (
     <html lang="es">
-      <body className="min-h-screen bg-[var(--color-fondo)] text-[var(--color-texto)] antialiased">
-        <header className="border-b border-[var(--color-borde)]">
-          <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3">
-            <span className="font-semibold tracking-tight">Chessito</span>
-            <nav className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-              {NAV.map((item) => (
-                <Link key={item.href} href={item.href} className="text-[var(--color-tenue)] hover:text-[var(--color-texto)]">
-                  {item.label}
-                </Link>
-              ))}
-            </nav>
+      <body className="min-h-screen bg-fondo font-sans text-texto antialiased">
+        <header className="sticky top-0 z-20 border-b border-borde bg-fondo/85 backdrop-blur">
+          <div className="relative mx-auto flex max-w-6xl items-center gap-4 px-4 py-2.5">
+            <Link href="/" className="flex shrink-0 items-center gap-2">
+              <span aria-hidden className="text-lg leading-none">
+                ♞
+              </span>
+              <span className="font-semibold tracking-tight">Chessito</span>
+            </Link>
+            <Nav />
             {label ? (
-              <span className="ml-auto rounded border border-[var(--color-aviso)] px-2 py-0.5 text-xs font-medium text-[var(--color-aviso)]">
+              <span className="ml-auto rounded-md border border-aviso/40 bg-aviso/10 px-2 py-0.5 text-2xs font-medium uppercase tracking-wider text-aviso">
                 {label}
               </span>
             ) : null}
           </div>
         </header>
-        <main className="mx-auto max-w-5xl px-4 py-8">{children}</main>
+        <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>
       </body>
     </html>
   );

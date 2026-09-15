@@ -1,97 +1,200 @@
 import { afterResult, byHour, bySessionIndex } from '@/lib/data';
-import { Ayuda, Panel, Rendimiento, Tabla, Vacio, filaAtenuada } from '@/components/ui';
+import { Ayuda, Badge, Fila, PageHeader, Panel, Rendimiento, Tabla, Td, Vacio } from '@/components/ui';
+import { BarrasV, type BarraV } from '@/components/charts/BarrasV';
 
 export const dynamic = 'force-dynamic';
 
 const AYUDA_RENDIMIENTO = (
-  <Ayuda>
+  <Ayuda alinear="der">
     El número grande es la cota inferior de Wilson: corrige a la baja el porcentaje bruto cuando
     la muestra es chica, para que no parezca mejor o peor de lo que es por casualidad. Debajo, el
     porcentaje bruto y n (número de partidas de este corte).
   </Ayuda>
 );
 
-/** Pregunta 2: tilt y fatiga. Hora local de Santiago, numero de partida en la sesion, y que
- * pasa despues de una derrota. Las vistas ya vienen en `America/Santiago`. */
+/**
+ * Pregunta 2: tilt y fatiga. Hora local de Santiago, numero de partida en la sesion, y que
+ * pasa despues de una derrota. Las vistas ya vienen en `America/Santiago`.
+ */
 export default async function RitmoPage() {
   const [horas, sesion, despues] = await Promise.all([byHour(), bySessionIndex(), afterResult()]);
 
   const clases = [...new Set(horas.map((h) => h.time_class).filter((c): c is string => c !== null))].sort();
 
+  // La clase con mas partidas manda el grafico: mezclar bullet y rapid en las mismas columnas
+  // compararia cosas distintas. El resto sigue disponible en la tabla.
+  const totalPorClase = new Map<string, number>();
+  for (const h of horas) {
+    const clase = h.time_class ?? '';
+    totalPorClase.set(clase, (totalPorClase.get(clase) ?? 0) + (h.n ?? 0));
+  }
+  const claseGrafico = [...totalPorClase.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
+
+  const columnasHora: BarraV[] = Array.from({ length: 24 }, (_, hora) => {
+    const fila = horas.find((h) => h.time_class === claseGrafico && h.hour_local === hora);
+    const n = fila?.n ?? 0;
+    const wilson = fila?.score_pct_lower ?? null;
+    return {
+      etiqueta: String(hora).padStart(2, '0'),
+      valor: wilson === null ? null : wilson * 100,
+      n,
+      titulo:
+        n === 0
+          ? `${String(hora).padStart(2, '0')}:00 · sin partidas`
+          : `${String(hora).padStart(2, '0')}:00 · n=${n} · Wilson ${((wilson ?? 0) * 100).toFixed(1)}%`,
+    };
+  });
+
+  const columnasSesion: BarraV[] = sesion
+    .filter((s) => s.time_class === claseGrafico)
+    .sort((a, b) => (a.game_index_capped ?? 0) - (b.game_index_capped ?? 0))
+    .map((s) => {
+      const wilson = s.score_pct_lower ?? null;
+      return {
+        etiqueta: s.game_index_capped === 6 ? '6+' : String(s.game_index_capped ?? ''),
+        valor: wilson === null ? null : wilson * 100,
+        n: s.n ?? 0,
+        titulo: `Partida ${s.game_index_capped} de la sesión · n=${s.n} · Wilson ${((wilson ?? 0) * 100).toFixed(1)}%`,
+      };
+    });
+
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-xl font-semibold">Ritmo</h1>
-        <p className="mt-1 text-sm text-[var(--color-tenue)]">
-          Horario de Santiago. Toda fila muestra su n y las de menos de 20 partidas salen
-          atenuadas: un corte sobre 12 partidas es ruido.
-        </p>
-      </header>
+      <PageHeader titulo="Ritmo">
+        Tilt y fatiga, en horario de Santiago. Los gráficos muestran{' '}
+        <strong className="text-texto">{claseGrafico || 'tu control de tiempo más jugado'}</strong>, que es
+        donde tienes más partidas; el resto está en las tablas. Las columnas con menos de 20
+        partidas salen atenuadas: un corte sobre 12 partidas es ruido, no un patrón.
+      </PageHeader>
 
-      <Panel title="Por hora del dia" subtitle="Rendimiento segun la hora local a la que termino la partida">
+      <Panel
+        title="Por hora del día"
+        subtitle="Rendimiento según la hora local a la que terminó la partida. La línea punteada es el 50%."
+      >
         {horas.length === 0 ? (
-          <Vacio>Sin datos todavia.</Vacio>
+          <Vacio>Sin datos todavía.</Vacio>
         ) : (
-          <Tabla headers={['Hora', 'Tipo', <span key="r" className="inline-flex items-center">Rendimiento{AYUDA_RENDIMIENTO}</span>]}>
-            {horas.map((h) => {
-              const n = h.n ?? 0;
-              return (
-                <tr key={`${h.time_class}-${h.hour_local}`} className={`border-b border-[var(--color-borde)]/50 ${filaAtenuada(n)}`}>
-                  <td className="py-1.5 pr-3 tabular-nums">{String(h.hour_local).padStart(2, '0')}:00</td>
-                  <td className="py-1.5 pr-3">{h.time_class}</td>
-                  <td className="py-1.5 pr-3"><Rendimiento pctValue={h.score_pct} wilson={h.score_pct_lower} n={n} /></td>
-                </tr>
-              );
-            })}
-          </Tabla>
+          <div className="space-y-5">
+            <BarrasV datos={columnasHora} max={100} referencia={50} unidad="%" cadaCuantasEtiquetas={3} />
+            <details className="group">
+              <summary className="cursor-pointer list-none text-xs text-tenue hover:text-texto">
+                <span className="group-open:hidden">▸ Ver la tabla completa</span>
+                <span className="hidden group-open:inline">▾ Ocultar la tabla</span>
+              </summary>
+              <div className="mt-3">
+                <Tabla
+                  aligns={['text', 'text', 'num']}
+                  headers={[
+                    'Hora',
+                    'Tipo',
+                    <span key="r" className="inline-flex items-center">
+                      Rendimiento
+                      {AYUDA_RENDIMIENTO}
+                    </span>,
+                  ]}
+                >
+                  {horas.map((h) => {
+                    const n = h.n ?? 0;
+                    return (
+                      <Fila key={`${h.time_class}-${h.hour_local}`} atenuada={n < 20}>
+                        <Td className="tabular-nums">{String(h.hour_local).padStart(2, '0')}:00</Td>
+                        <Td>
+                          <Badge>{h.time_class}</Badge>
+                        </Td>
+                        <Td num>
+                          <Rendimiento pctValue={h.score_pct} wilson={h.score_pct_lower} n={n} />
+                        </Td>
+                      </Fila>
+                    );
+                  })}
+                </Tabla>
+              </div>
+            </details>
+          </div>
         )}
       </Panel>
 
-      <Panel title="Fatiga" subtitle="Rendimiento segun cuantas partidas lleva en la sesion (6 = sexta o mas)">
+      <Panel
+        title="Fatiga"
+        subtitle="Rendimiento según cuántas partidas llevas en la sesión (6 = sexta o más)"
+      >
         {sesion.length === 0 ? (
-          <Vacio>Sin datos todavia.</Vacio>
+          <Vacio>Sin datos todavía.</Vacio>
         ) : (
-          <Tabla headers={['Partida de la sesion', 'Tipo', <span key="r" className="inline-flex items-center">Rendimiento{AYUDA_RENDIMIENTO}</span>]}>
-            {sesion.map((s) => {
-              const n = s.n ?? 0;
-              return (
-                <tr key={`${s.time_class}-${s.game_index_capped}`} className={`border-b border-[var(--color-borde)]/50 ${filaAtenuada(n)}`}>
-                  <td className="py-1.5 pr-3 tabular-nums">
-                    {s.game_index_capped === 6 ? '6 o mas' : s.game_index_capped}
-                  </td>
-                  <td className="py-1.5 pr-3">{s.time_class}</td>
-                  <td className="py-1.5 pr-3"><Rendimiento pctValue={s.score_pct} wilson={s.score_pct_lower} n={n} /></td>
-                </tr>
-              );
-            })}
-          </Tabla>
+          <div className="space-y-5">
+            {columnasSesion.length > 0 ? (
+              <BarrasV datos={columnasSesion} max={100} referencia={50} unidad="%" />
+            ) : null}
+            <details className="group">
+              <summary className="cursor-pointer list-none text-xs text-tenue hover:text-texto">
+                <span className="group-open:hidden">▸ Ver la tabla completa</span>
+                <span className="hidden group-open:inline">▾ Ocultar la tabla</span>
+              </summary>
+              <div className="mt-3">
+                <Tabla
+                  aligns={['text', 'text', 'num']}
+                  headers={[
+                    'Partida de la sesión',
+                    'Tipo',
+                    <span key="r" className="inline-flex items-center">
+                      Rendimiento
+                      {AYUDA_RENDIMIENTO}
+                    </span>,
+                  ]}
+                >
+                  {sesion.map((s) => {
+                    const n = s.n ?? 0;
+                    return (
+                      <Fila key={`${s.time_class}-${s.game_index_capped}`} atenuada={n < 20}>
+                        <Td className="tabular-nums">
+                          {s.game_index_capped === 6 ? '6 o más' : s.game_index_capped}
+                        </Td>
+                        <Td>
+                          <Badge>{s.time_class}</Badge>
+                        </Td>
+                        <Td num>
+                          <Rendimiento pctValue={s.score_pct} wilson={s.score_pct_lower} n={n} />
+                        </Td>
+                      </Fila>
+                    );
+                  })}
+                </Tabla>
+              </div>
+            </details>
+          </div>
         )}
       </Panel>
 
-      <Panel title="Tilt" subtitle="Como le va en la partida siguiente segun como termino la anterior">
+      <Panel title="Tilt" subtitle="Cómo te va en la partida siguiente según cómo terminó la anterior">
         {despues.length === 0 ? (
-          <Vacio>Sin datos todavia.</Vacio>
+          <Vacio>Sin datos todavía.</Vacio>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-5">
             {clases.map((clase) => {
               const filas = despues.filter((d) => d.time_class === clase);
               if (filas.length === 0) return null;
+              const orden = { win: 0, draw: 1, loss: 2 } as const;
+              const ordenadas = [...filas].sort(
+                (a, b) =>
+                  (orden[a.prev_result as keyof typeof orden] ?? 9) -
+                  (orden[b.prev_result as keyof typeof orden] ?? 9),
+              );
               return (
                 <div key={clase}>
-                  <h3 className="mb-1 text-xs uppercase tracking-wide text-[var(--color-tenue)]">{clase}</h3>
-                  <Tabla headers={['Partida anterior', <span key="r" className="inline-flex items-center">Rendimiento{AYUDA_RENDIMIENTO}</span>]}>
-                    {filas.map((d) => {
-                      const n = d.n ?? 0;
-                      return (
-                        <tr key={`${clase}-${d.prev_result}`} className={`border-b border-[var(--color-borde)]/50 ${filaAtenuada(n)}`}>
-                          <td className="py-1.5 pr-3">
-                            {d.prev_result === 'win' ? 'ganada' : d.prev_result === 'loss' ? 'perdida' : 'tablas'}
-                          </td>
-                          <td className="py-1.5 pr-3"><Rendimiento pctValue={d.score_pct} wilson={d.score_pct_lower} n={n} /></td>
-                        </tr>
-                      );
-                    })}
-                  </Tabla>
+                  <h3 className="mb-2 text-2xs uppercase tracking-wider text-tenue">{clase}</h3>
+                  <BarrasV
+                    datos={ordenadas.map((d) => ({
+                      etiqueta:
+                        d.prev_result === 'win' ? 'tras ganar' : d.prev_result === 'loss' ? 'tras perder' : 'tras tablas',
+                      valor: (d.score_pct_lower ?? 0) * 100,
+                      n: d.n ?? 0,
+                      titulo: `n=${d.n} · Wilson ${((d.score_pct_lower ?? 0) * 100).toFixed(1)}% · bruto ${((d.score_pct ?? 0) * 100).toFixed(1)}%`,
+                    }))}
+                    max={100}
+                    referencia={50}
+                    unidad="%"
+                    alto="h-20"
+                  />
                 </div>
               );
             })}

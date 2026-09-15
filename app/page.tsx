@@ -1,11 +1,26 @@
 import { revalidatePath } from 'next/cache';
+import Link from 'next/link';
 import { ChesscomClient } from '@/lib/chess/chesscom';
 import { appEnv, env } from '@/lib/env';
 import { runIngest } from '@/lib/ingest/run';
 import { SupabaseIngestStore } from '@/lib/ingest/supabase-store';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { healthSummary, monthlyActivity, monthlySummary } from '@/lib/data';
-import { Ayuda, Panel, Rendimiento, SortableTh, Tabla, Vacio, filaAtenuada } from '@/components/ui';
+import {
+  Ayuda,
+  Badge,
+  Button,
+  Panel,
+  Progreso,
+  Rendimiento,
+  SortableTh,
+  Stat,
+  Tabla,
+  Td,
+  Fila,
+  Vacio,
+} from '@/components/ui';
+import { Sparkline } from '@/components/charts/Sparkline';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,6 +76,20 @@ export default async function Portada({
   const totalMes = resumenMes?.n_games ?? 0;
   const avance = Math.min(100, Math.round((rapidas / META_MENSUAL) * 100));
 
+  // Tendencia de rating: el tipo de partida mas jugado, en orden cronologico. `monthlyActivity`
+  // viene del mas reciente al mas viejo, asi que se invierte para que la linea lea de izq a der.
+  const claseDominante = mesesOrdenados.reduce<{ clase: string; n: number }>(
+    (mejor, m) => ((m.n ?? 0) > mejor.n ? { clase: m.time_class ?? '', n: m.n ?? 0 } : mejor),
+    { clase: '', n: 0 },
+  ).clase;
+  const tendenciaRating = [...meses]
+    .filter((m) => m.time_class === claseDominante && m.rating_at_month_end !== null)
+    .sort((a, b) => (a.month_local ?? '').localeCompare(b.month_local ?? ''))
+    .map((m) => m.rating_at_month_end as number);
+  const ratingActual = tendenciaRating.at(-1);
+  const ratingPrevio = tendenciaRating.at(-2);
+  const deltaRating = ratingActual !== undefined && ratingPrevio !== undefined ? ratingActual - ratingPrevio : null;
+
   // El boton "Actualizar ahora": llama al MISMO runIngest que el cron. Existe porque la app
   // se abre justo despues de jugar y el cron gratuito de Vercel corre una vez al dia.
   async function actualizarAhora(): Promise<void> {
@@ -78,76 +107,88 @@ export default async function Portada({
 
   return (
     <div className="space-y-6">
-      <section className="rounded-lg border border-[var(--color-borde)] bg-[var(--color-panel)] p-6">
-        <p className="text-xs uppercase tracking-wide text-[var(--color-tenue)]">
-          Partidas de rapida este mes
-        </p>
-        <p className="mt-1 flex items-baseline gap-2">
-          <span className="text-5xl font-semibold tabular-nums">{rapidas}</span>
-          <span className="text-lg text-[var(--color-tenue)]">/ {META_MENSUAL}</span>
-        </p>
-        <div className="mt-3 h-2 w-full overflow-hidden rounded bg-[var(--color-borde)]">
-          <div
-            className="h-full rounded bg-[var(--color-bien)]"
-            style={{ width: `${avance}%` }}
-            aria-hidden
-          />
+      <section className="rounded-xl border border-borde bg-panel p-6 shadow-panel">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-2xs uppercase tracking-wider text-tenue">Partidas de rápida este mes</p>
+            <p className="mt-1 flex items-baseline gap-2">
+              <span className="text-5xl font-semibold tabular-nums">{rapidas}</span>
+              <span className="text-lg text-tenue">/ {META_MENSUAL}</span>
+            </p>
+          </div>
+          <form action={actualizarAhora}>
+            <Button type="submit" variante="fantasma" pendingLabel="Actualizando…">
+              Actualizar ahora
+            </Button>
+          </form>
         </div>
-        <p className="mt-2 text-sm text-[var(--color-tenue)]">
+
+        <div className="mt-4">
+          <Progreso valor={avance} />
+        </div>
+        <p className="mt-2 text-sm text-tenue">
           {rapidas >= META_MENSUAL
             ? 'Meta cumplida. Sigue jugando.'
             : `Faltan ${META_MENSUAL - rapidas} para la meta. ${totalMes} partidas en total este mes.`}
         </p>
-
-        <form action={actualizarAhora} className="mt-4">
-          <button
-            type="submit"
-            className="rounded border border-[var(--color-borde)] px-3 py-1.5 text-sm hover:bg-[var(--color-borde)]"
-          >
-            Actualizar ahora
-          </button>
-          <span className="ml-3 text-xs text-[var(--color-tenue)]">
-            Trae el mes actual y el anterior desde chess.com.
-          </span>
-        </form>
       </section>
 
       {salud ? (
-        <Panel title="Estado" subtitle="El detalle completo esta en /salud">
-          <ul className="grid gap-2 text-sm sm:grid-cols-2">
-            <li>
-              Partidas guardadas: <strong className="tabular-nums">{salud.n_games ?? 0}</strong>
-            </li>
-            <li>
-              Pendientes de analizar: <strong className="tabular-nums">{salud.n_pending ?? 0}</strong>
-            </li>
-            <li>
-              Chequeos de calidad:{' '}
-              <strong className={salud.checks_failing ? 'text-[var(--color-mal)]' : 'text-[var(--color-bien)]'}>
-                {(salud.checks_total ?? 0) - (salud.checks_failing ?? 0)}/{salud.checks_total ?? 0}
-              </strong>
-            </li>
-            <li>
-              Ultima ingesta:{' '}
-              <strong className={(salud.ingest_hours_old ?? 0) > 48 ? 'text-[var(--color-mal)]' : ''}>
-                {salud.ingest_hours_old === null ? 'nunca' : `hace ${salud.ingest_hours_old} h`}
-              </strong>
-            </li>
-          </ul>
-        </Panel>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Stat
+            etiqueta={`Rating ${claseDominante || ''}`.trim()}
+            valor={ratingActual ?? '—'}
+            detalle={
+              deltaRating === null
+                ? 'Al cierre del último mes'
+                : `${deltaRating >= 0 ? '+' : ''}${deltaRating} vs el mes anterior`
+            }
+            tono={deltaRating === null ? undefined : deltaRating >= 0 ? 'bien' : 'critico'}
+          >
+            <Sparkline
+              valores={tendenciaRating}
+              tono={deltaRating !== null && deltaRating < 0 ? 'critico' : 'acento'}
+            />
+          </Stat>
+          <Stat etiqueta="Partidas guardadas" valor={(salud.n_games ?? 0).toLocaleString('es-CL')} />
+          <Stat
+            etiqueta="Pendientes de analizar"
+            valor={(salud.n_pending ?? 0).toLocaleString('es-CL')}
+            detalle={salud.n_pending ? 'El motor corre en GitHub Actions' : 'Todo analizado'}
+          />
+          <Stat
+            etiqueta="Chequeos de calidad"
+            valor={`${(salud.checks_total ?? 0) - (salud.checks_failing ?? 0)}/${salud.checks_total ?? 0}`}
+            tono={salud.checks_failing ? 'critico' : 'bien'}
+            detalle={
+              salud.ingest_hours_old === null
+                ? 'Nunca se ingirió'
+                : `Última ingesta hace ${salud.ingest_hours_old} h`
+            }
+          />
+        </div>
       ) : null}
 
-      <Panel title="Actividad por mes" subtitle="Ultimos meses, por control de tiempo. El rendimiento se ordena por la cota inferior de Wilson; bajo 20 partidas la fila sale atenuada.">
+      <Panel
+        title="Actividad por mes"
+        subtitle="Rendimiento por control de tiempo, ordenado por la cota inferior de Wilson. Bajo 20 partidas la fila sale atenuada."
+        actions={
+          <Link href="/registro" className="text-xs text-acento hover:underline">
+            Ver todas las partidas →
+          </Link>
+        }
+      >
         {meses.length === 0 ? (
-          <Vacio>Todavia no hay partidas. Aprieta &quot;Actualizar ahora&quot;.</Vacio>
+          <Vacio>Todavía no hay partidas. Aprieta &quot;Actualizar ahora&quot;.</Vacio>
         ) : (
           <Tabla
+            aligns={['text', 'text', 'num', 'num']}
             headers={[
               <SortableTh key="mes" label="Mes" sortKey="month" currentSort={sort} currentDir={dir} href={link} />,
               'Tipo',
               <span key="rendimiento" className="inline-flex items-center">
                 <SortableTh label="Rendimiento" sortKey="wilson" currentSort={sort} currentDir={dir} href={link} />
-                <Ayuda>
+                <Ayuda alinear="der">
                   El número grande es la cota inferior de Wilson: corrige a la baja el porcentaje
                   bruto cuando la muestra es chica, para que no parezca mejor o peor de lo que es
                   por casualidad. Debajo, el porcentaje bruto y n (número de partidas del mes).
@@ -159,17 +200,16 @@ export default async function Portada({
             {mesesOrdenados.slice(0, 18).map((m) => {
               const n = m.n ?? 0;
               return (
-                <tr
-                  key={`${m.month_local}-${m.time_class}`}
-                  className={`border-b border-[var(--color-borde)]/50 ${filaAtenuada(n)}`}
-                >
-                  <td className="py-1.5 pr-3 tabular-nums">{m.month_local}</td>
-                  <td className="py-1.5 pr-3">{m.time_class}</td>
-                  <td className="py-1.5 pr-3">
+                <Fila key={`${m.month_local}-${m.time_class}`} atenuada={n < 20}>
+                  <Td className="tabular-nums">{m.month_local}</Td>
+                  <Td>
+                    <Badge>{m.time_class}</Badge>
+                  </Td>
+                  <Td num>
                     <Rendimiento pctValue={m.score_pct} wilson={m.score_pct_lower} n={n} />
-                  </td>
-                  <td className="py-1.5 pr-3 tabular-nums">{m.rating_at_month_end ?? '—'}</td>
-                </tr>
+                  </Td>
+                  <Td num>{m.rating_at_month_end ?? '—'}</Td>
+                </Fila>
               );
             })}
           </Tabla>

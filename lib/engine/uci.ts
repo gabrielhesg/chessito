@@ -19,6 +19,21 @@ export type SpawnFn = (enginePath: string) => EngineProcess;
 
 const defaultSpawn: SpawnFn = (enginePath) => nodeSpawn(enginePath, [], { stdio: ['pipe', 'pipe', 'ignore'] });
 
+/**
+ * La linea principal de un `info`. En UCI, `pv` es SIEMPRE el ultimo campo de la linea, asi que
+ * todo lo que viene despues son jugadas. Devuelve null si esa linea no trae `pv`.
+ */
+function extraerPv(line: string): string[] | null {
+  const marca = / pv /.exec(line);
+  if (!marca) return null;
+  const jugadas = line
+    .slice(marca.index + marca[0].length)
+    .trim()
+    .split(/\s+/)
+    .filter((jugada) => /^[a-h][1-8][a-h][1-8][qrbn]?$/.test(jugada));
+  return jugadas.length > 0 ? jugadas : null;
+}
+
 export type EvalResult = {
   /** Centipeones, EN PERSPECTIVA DEL QUE MUEVE (cruda de UCI). Normalizar es trabajo de lib/analysis/. */
   scoreCp: number | null;
@@ -26,6 +41,16 @@ export type EvalResult = {
   mateIn: number | null;
   /** null cuando la posicion no tiene jugadas legales (jaque mate o ahogado): el motor responde "bestmove (none)". */
   bestUci: string | null;
+  /**
+   * Linea principal completa en UCI, de la mas profunda antes de `bestmove`. `bestUci` es su
+   * primer elemento.
+   *
+   * Es lo que hace posible un ejercicio de varias jugadas y una explicacion de por que la jugada
+   * fue mala: la linea que sigue a un blunder ES la refutacion, es decir como te castigaba el
+   * rival. El motor ya la manda en cada `info`; antes se leia solo el primer token y el resto se
+   * tiraba.
+   */
+  pv: string[];
 };
 
 export class UciEngine {
@@ -101,6 +126,7 @@ export class UciEngine {
 
     let scoreCp: number | null = null;
     let mateIn: number | null = null;
+    let pv: string[] = [];
 
     this.send(`go nodes ${nodes}`);
     const bestmoveLine = await this.readUntil(
@@ -116,12 +142,14 @@ export class UciEngine {
           scoreCp = Number.parseInt(cpMatch[1], 10);
           mateIn = null;
         }
+        const linea = extraerPv(line);
+        if (linea) pv = linea;
       },
     );
 
     const rawBestUci = bestmoveLine.split(' ')[1] ?? '';
     const bestUci = rawBestUci === '(none)' ? null : rawBestUci;
-    return { scoreCp, mateIn, bestUci };
+    return { scoreCp, mateIn, bestUci, pv };
   }
 
   /**
@@ -135,7 +163,7 @@ export class UciEngine {
     const movesPart = uciMoves.length > 0 ? ` moves ${uciMoves.join(' ')}` : '';
     this.send(`position startpos${movesPart}`);
 
-    const byRank = new Map<number, { scoreCp: number | null; mateIn: number | null; bestUci: string }>();
+    const byRank = new Map<number, EvalResult>();
 
     this.send(`go nodes ${nodes}`);
     await this.readUntil(
@@ -144,14 +172,14 @@ export class UciEngine {
         const rankMatch = /multipv (\d+)/.exec(line);
         if (!rankMatch?.[1]) return;
         const rank = Number.parseInt(rankMatch[1], 10);
-        const pvMatch = / pv (\S+)/.exec(line);
-        if (!pvMatch?.[1]) return;
+        const pv = extraerPv(line);
+        if (!pv?.[0]) return;
         const mateMatch = /score mate (-?\d+)/.exec(line);
         const cpMatch = /score cp (-?\d+)/.exec(line);
         if (mateMatch?.[1]) {
-          byRank.set(rank, { scoreCp: null, mateIn: Number.parseInt(mateMatch[1], 10), bestUci: pvMatch[1] });
+          byRank.set(rank, { scoreCp: null, mateIn: Number.parseInt(mateMatch[1], 10), bestUci: pv[0], pv });
         } else if (cpMatch?.[1]) {
-          byRank.set(rank, { scoreCp: Number.parseInt(cpMatch[1], 10), mateIn: null, bestUci: pvMatch[1] });
+          byRank.set(rank, { scoreCp: Number.parseInt(cpMatch[1], 10), mateIn: null, bestUci: pv[0], pv });
         }
       },
     );
