@@ -1,0 +1,76 @@
+name: motor
+
+# Baja la red neuronal que necesita Stockfish 19 y la deja commiteada en la rama.
+#
+# Por que un workflow y no un paso del build: el `.wasm` de `@lichess-org/stockfish-web` NO trae
+# la red adentro (la pide con `setNnueBuffer`), y hay que bajarla de tests.stockfishchess.org, que
+# no es npm. El entorno donde se escribio este codigo no alcanza ese host, asi que la unica forma
+# de meter el archivo al repo sin sentarse frente a un computador — la regla del proyecto — es
+# desde un runner de Actions.
+#
+# Mismo criterio que el binario: se COMMITEA, no se instala. Un `postinstall` que baje archivos
+# convierte cada build en una llamada a un servidor de terceros.
+#
+# Mientras la red no este, la app NO se queda sin motor: `lib/engine/useBrowserEngine.ts` cae solo
+# al Stockfish 18, que es autocontenido.
+on:
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: 'Que hacer'
+        type: choice
+        default: medir
+        options:
+          - medir
+          - commitear
+
+jobs:
+  red-neuronal:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Que red pide el motor
+        id: cual
+        run: |
+          set -euo pipefail
+          # El nombre sale del propio .wasm commiteado, no de una constante en el workflow: si
+          # alguna vez se cambia de build, el nombre cambia con el y esto lo sigue.
+          RED=$(grep -ao 'nn-[0-9a-f]\{12\}\.nnue' public/stockfish/sf_19_smallnet.wasm | head -1)
+          if [ -z "$RED" ]; then
+            echo "No se pudo leer el nombre de la red desde el .wasm"
+            exit 1
+          fi
+          echo "El motor pide: $RED"
+          echo "red=$RED" >> "$GITHUB_OUTPUT"
+
+      - name: Bajar y medir
+        run: |
+          set -euo pipefail
+          RED='${{ steps.cual.outputs.red }}'
+          curl -fsSL -o "public/stockfish/$RED" "https://tests.stockfishchess.org/api/nn/$RED"
+          # Medir ANTES de commitear, no despues: GitHub rechaza archivos de mas de 100 MB y un
+          # repo no es el lugar para cientos de megabytes. Si esto sorprende, se revisa a mano.
+          BYTES=$(stat -c%s "public/stockfish/$RED")
+          echo "Tamano: $BYTES bytes ($((BYTES / 1024 / 1024)) MB)"
+          if [ "$BYTES" -gt 52428800 ]; then
+            echo "La red pesa mas de 50 MB. No se commitea sin revisar: usar el build smallnet."
+            exit 1
+          fi
+
+      - name: Commitear
+        if: inputs.modo == 'commitear'
+        run: |
+          set -euo pipefail
+          RED='${{ steps.cual.outputs.red }}'
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add "public/stockfish/$RED"
+          if git diff --cached --quiet; then
+            echo "La red ya estaba commiteada. No hay nada que hacer."
+            exit 0
+          fi
+          git commit -m "Motor: red neuronal $RED de Stockfish 19"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

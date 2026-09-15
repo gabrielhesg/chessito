@@ -713,10 +713,10 @@ y `tests/uci.test.ts` no se tocaron — que los 14 tests del motor pasaran sin m
 prueba de que la refactorizacion no cambio comportamiento.
 
 **El binario va commiteado en `public/stockfish/`, no instalado.** El paquete de npm pesa 168 MB
-porque trae todos los builds; se usan 7,3 MB del `lite-single`. Ese build NO necesita los headers
-COOP/COEP — verificado sobre el archivo: cero ocurrencias de `SharedArrayBuffer`. El multi-hilo
-obligaria a aislar el sitio entero y, sin los headers, cae a un hilo *en silencio*. Va con su
-`Copying.txt`, que es lo que la GPL-3 pide al servir el binario.
+porque trae todos los builds; se usan 7,3 MB del `lite-single`. Va con su `Copying.txt`, que es lo
+que la GPL-3 pide al servir el binario. *(La Fase 9 agrego un segundo motor al lado, Stockfish 19,
+y con el si aparecieron los headers COOP/COEP. Detalle abajo, en el estado de la Fase 9; el
+razonamiento completo esta en `public/stockfish/README.md`.)*
 
 **`middleware.ts` excluye `/stockfish`.** Sin esa excepcion el Web Worker recibe el HTML de
 `/entrar` en vez del motor y falla con un error que no dice nada. Si agregas otro asset que cargue
@@ -848,3 +848,64 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+## Estado al terminar la Fase 9
+
+Cuatro arreglos de uso real en `/partida/[id]` y el salto a Stockfish 19 en el navegador. Sin
+migracion nueva.
+
+| Pieza | Donde |
+|---|---|
+| Miniatura de tablero desde un FEN, pura y testeada | `components/MiniBoard.tsx` |
+| Motor 19 en el navegador (el puente) | `public/stockfish/sf19-worker.js` |
+| Headers de aislamiento, condicionados | `next.config.ts` |
+| Workflow que baja la red neuronal | `.github/workflows/motor.yml` |
+
+**El tablero cambiaba de tamano y mostraba franjas oscuras por la misma causa: un ancho que no es
+multiplo de 8.** `react-chessboard` dibuja `repeat(8, 1fr)` con `aspect-ratio: 1/1` y sin `gap`,
+asi que con 491px los bordes de casilla caen en sub-pixeles y asoma el fondo; y al aparecer o
+desaparecer la barra de scroll del documento se re-redondea que casillas miden 61 y cuales 62. El
+tablero quedo en 512 (8x64) fijo en escritorio, y el contenedor lleva el verde de casilla oscura
+de fondo para el caso fluido del celular, donde el multiplo no se puede garantizar.
+
+**`scrollIntoView` desplaza TODOS los ancestros con scroll, incluida la ventana.** Por eso al
+navegar con las flechas la pagina bajaba sola. `components/MoveList.tsx` mueve el `scrollTop` de
+su propio contenedor y nada mas, con `getBoundingClientRect` y no con `offsetTop` (que es relativo
+al `offsetParent`, y ese contenedor no es `position: relative`).
+
+**Dentro de una variacion el puntaje lo da el motor, y el giro de signo es obligatorio.**
+`EvalLine.scoreCp` viene crudo de UCI, en perspectiva del que mueve; la barra espera perspectiva
+de blancas. `evaluacionVisible` en `GameReview.tsx` es el unico lugar donde se decide, y usa
+`toWhitePerspective`. El motor ademas **se enciende solo** la primera vez que se sale de la linea
+principal: si hubiera que apretar un boton, no habria puntaje, que era la queja.
+
+**La miniatura se abre con hover, foco Y tap, y el click la FIJA.** En el celular un tap dispara
+`mouseenter`, `focus`, `click` y `mouseleave` en ese orden: con un toggle, el `mouseleave` del
+final cerraba la miniatura en el mismo gesto que la abria. Salio probandolo en el navegador a
+400px, no de los tests.
+
+**Los dos motores del navegador no son una cadena de respaldo, son una eleccion.** Stockfish 19
+(`@lichess-org/stockfish-web`) crea su memoria compartida, asi que EXIGE un documento aislado.
+Stockfish 18 (nmrugg) es autocontenido pero **no arranca en un documento aislado**: se queda
+colgado sin llegar a `uciok`. Medido en el navegador, con los headers puestos y sin ellos.
+`lib/engine/useBrowserEngine.ts` elige por `crossOriginIsolated`, que es exactamente esa
+condicion y la responde el navegador, sin adivinar.
+
+**La red neuronal del 19 no viene dentro del `.wasm`.** Se pide con `setNnueBuffer` y se baja de
+`tests.stockfishchess.org`, que no es npm. La commitea el workflow `motor`, que lee el nombre del
+propio `.wasm` (no hay una constante que se pueda desincronizar) e imprime el tamano antes de
+commitear. **`next.config.ts` solo manda los headers de aislamiento si existe un `.nnue` en
+`public/stockfish/`**: asi no hay un momento intermedio en que la pagina este aislada y ningun
+motor pueda correr ahi. El cambio de 18 a 19 lo dispara el commit de la red, no un despliegue.
+
+**Los headers van solo en `/partida/:path*` y `/entrenador/:path*`**, que son las dos paginas con
+motor. El aislamiento es por documento, asi que acotarlo da el mismo resultado sin arriesgar
+`/entrar` ni la portada con un `require-corp`. Y `/stockfish/:path*` necesita su propio
+`Cross-Origin-Resource-Policy`: sin el, el documento aislado bloquea el script del worker con un
+`ERR_BLOCKED_BY_RESPONSE` que no dice nada sobre la causa.
+
+**Lo que NO esta hecho y no es un olvido.** Verificar Stockfish 19 con su red de verdad: el
+entorno donde se escribio esto no alcanza `tests.stockfishchess.org`. Se verifico con una red de
+prueba que el modulo carga, que el puente traduce el protocolo y que el panel dice "Stockfish 19"
+y entrega lineas; lo unico sin comprobar es que las evaluaciones sean correctas, que es
+exactamente lo que aporta la red real.
