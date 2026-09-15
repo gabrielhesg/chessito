@@ -28,7 +28,7 @@ export function Pagina({
           <h1 className="text-[21px] font-semibold tracking-[-0.025em]">{titulo}</h1>
           {subtitulo ? <p className="mt-1 max-w-[86ch] text-[12.5px] leading-relaxed text-tenue">{subtitulo}</p> : null}
         </div>
-        {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2.5">{actions}</div> : null}
+        {actions ? <div className="flex w-full flex-wrap items-center gap-2.5 sm:w-auto sm:shrink-0">{actions}</div> : null}
       </header>
       <div className="px-5 py-6 sm:px-7">{children}</div>
     </div>

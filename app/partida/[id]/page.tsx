@@ -167,10 +167,11 @@ export default async function PartidaPage({
 
         <GameReview
           jugadas={jugadas}
+          gameId={game.id}
           orientacion={game.my_color === 'black' ? 'black' : 'white'}
           plyInicial={Number.parseInt(ply ?? '0', 10) || 0}
           resumen={
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <Mini
                 etiqueta="Tiempo por jugada"
                 valor={medianaMs === null ? '—' : `${(medianaMs / 1000).toFixed(1)} s`}

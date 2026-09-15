@@ -50,12 +50,15 @@ export function GameReview({
   orientacion,
   plyInicial,
   resumen,
+  gameId,
 }: {
   jugadas: readonly JugadaUI[];
   orientacion: 'white' | 'black';
   plyInicial: number;
   /** Tarjetas de resumen de la partida, que el servidor calcula y esta columna solo muestra. */
   resumen?: ReactNode;
+  /** Para el link a entrenar la posicion, que solo aparece sobre un error tuyo. */
+  gameId: number;
 }) {
   const [ply, setPly] = useState(plyInicial);
 
@@ -100,6 +103,21 @@ export function GameReview({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [ir, plyAcotado, maxPly]);
+
+  // La lista va a dos columnas, como cualquier planilla de ajedrez: una fila por numero de
+  // jugada, con la de blancas y la de negras al lado. En una sola columna, una partida de 43
+  // jugadas son 86 filas y hay que hacer scroll el doble para encontrar nada.
+  const filas = useMemo(() => {
+    const porNumero = new Map<number, { numero: number; blancas?: JugadaUI; negras?: JugadaUI }>();
+    for (const j of jugadas) {
+      const numero = Math.ceil(j.ply / 2);
+      const fila = porNumero.get(numero) ?? { numero };
+      if (j.ply % 2 === 1) fila.blancas = j;
+      else fila.negras = j;
+      porNumero.set(numero, fila);
+    }
+    return [...porNumero.values()];
+  }, [jugadas]);
 
   const puntosEval: PuntoEval[] = jugadas.map((j) => ({
     ply: j.ply,
@@ -210,6 +228,14 @@ export function GameReview({
                 </>
               )}
             </p>
+            {jugadaActual.isMine && (jugadaActual.classification ?? 0) >= 2 ? (
+              <a
+                href={`/entrenador?partida=${gameId}&ply=${jugadaActual.ply}`}
+                className="mt-2.5 inline-block text-[12.5px] font-medium text-acento hover:underline"
+              >
+                Entrenar esta posición →
+              </a>
+            ) : null}
           </div>
         ) : (
           <p className="mt-3.5 rounded-xl border border-borde px-4 py-3.5 text-sm text-tenue">
@@ -240,43 +266,39 @@ export function GameReview({
           <p className="eyebrow mb-2">Jugadas</p>
           <div className="max-h-[300px] overflow-y-auto rounded-xl border border-borde">
             <ol ref={listaRef} className="divide-y divide-borde/60">
-              {jugadas.map((j) => {
-                const numero = Math.ceil(j.ply / 2);
-                const esBlancas = j.ply % 2 === 1;
-                const activa = j.ply === plyAcotado;
-                return (
-                  <li key={j.ply} data-ply={j.ply}>
-                    <button
-                      type="button"
-                      onClick={() => ir(j.ply)}
-                      aria-current={activa ? 'true' : undefined}
-                      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors ${
-                        activa ? 'bg-acento/15 text-texto' : 'hover:bg-panel-alto'
-                      }`}
-                    >
-                      <span className="w-10 shrink-0 text-2xs tabular-nums text-apagado">
-                        {esBlancas ? `${numero}.` : ''}
-                      </span>
-                      <span className={`w-16 shrink-0 font-mono ${j.isMine ? 'text-texto' : 'text-tenue'}`}>
-                        {j.san}
-                      </span>
-                      <span className="shrink-0">
+              {filas.map(({ numero, blancas, negras }) => (
+                <li key={numero} className="flex items-stretch">
+                  <span className="flex w-9 shrink-0 items-center bg-panel-alto/60 px-2 font-mono text-[11px] tabular-nums text-apagado">
+                    {numero}
+                  </span>
+                  {[blancas, negras].map((j, columna) =>
+                    j ? (
+                      <button
+                        key={columna}
+                        type="button"
+                        data-ply={j.ply}
+                        onClick={() => ir(j.ply)}
+                        aria-current={j.ply === plyAcotado ? 'true' : undefined}
+                        className={`flex min-w-0 flex-1 items-center gap-1.5 px-2.5 py-1.5 text-left text-[13px] transition-colors ${
+                          j.ply === plyAcotado ? 'bg-acento/15 text-texto' : 'hover:bg-panel-alto'
+                        }`}
+                      >
+                        <span className={`font-mono ${j.isMine ? 'text-texto' : 'text-tenue'}`}>{j.san}</span>
                         <Clasificacion valor={j.isMine ? j.classification : null} soloGlifo />
-                      </span>
-                      <span className="ml-auto shrink-0 text-2xs tabular-nums text-apagado">
-                        {j.evalCp === null
-                          ? ''
-                          : j.mateIn !== null
-                            ? `M${Math.abs(j.mateIn)}`
-                            : cpAPeones(j.evalCp)}
-                      </span>
-                      <span className="w-12 shrink-0 text-right text-2xs tabular-nums text-apagado">
-                        {segundos(j.moveTimeMs)}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
+                        <span className="ml-auto shrink-0 font-mono text-[11px] tabular-nums text-apagado">
+                          {j.evalCp === null
+                            ? ''
+                            : j.mateIn !== null
+                              ? `M${Math.abs(j.mateIn)}`
+                              : cpAPeones(j.evalCp)}
+                        </span>
+                      </button>
+                    ) : (
+                      <span key={columna} className="flex-1" />
+                    ),
+                  )}
+                </li>
+              ))}
             </ol>
           </div>
         </div>

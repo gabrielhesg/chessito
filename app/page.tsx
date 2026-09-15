@@ -79,7 +79,9 @@ export default async function Portada() {
     monthlyActivity(),
     healthSummary(),
     monthlySummary(mesActual),
-    gamesByDay(mesActual),
+    // `v_games_by_day` la crea la migracion 0008. Si todavia no se aplico, el calendario se
+    // degrada a su bloque vacio en vez de tumbar la portada entera.
+    gamesByDay(mesActual).catch(() => null),
     dueCount(),
     dueByTheme(),
     openingPerformance(),
@@ -107,7 +109,7 @@ export default async function Portada() {
   const deltaRating = ratingActual !== undefined && ratingPrevio !== undefined ? ratingActual - ratingPrevio : null;
   const maximo = claseDominante ? await ratingMaximo(claseDominante) : null;
 
-  const calendario = porDia
+  const calendario = (porDia ?? [])
     .filter((d) => d.day_local !== null)
     .map((d) => ({ dia: Number.parseInt((d.day_local as string).slice(-2), 10), partidas: d.n_games ?? 0 }));
 
@@ -327,12 +329,14 @@ export default async function Portada() {
             <p className="mb-4 mt-2.5 text-[12.5px] text-tenue">
               {totalMes} partidas en total este mes.
             </p>
-            <MonthCalendar
-              anio={anioActual}
-              mes={mesNumero}
-              dias={calendario}
-              hoy={hoy}
-            />
+            {porDia === null ? (
+              <PendienteDeDatos>
+                El calendario necesita la vista <code>v_games_by_day</code>, que agrega la
+                migración 0008. Corre <code>pnpm db:push</code> y vuelve.
+              </PendienteDeDatos>
+            ) : (
+              <MonthCalendar anio={anioActual} mes={mesNumero} dias={calendario} hoy={hoy} />
+            )}
           </section>
 
           <section className="rounded-[14px] border border-borde bg-panel px-5 py-4.5">

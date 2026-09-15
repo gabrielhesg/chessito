@@ -1,4 +1,4 @@
-import { dueCount, nextDuePuzzle, puzzleStatsByTheme, sessionToday } from '@/lib/data';
+import { dueCount, nextDuePuzzle, puzzleAt, puzzleStatsByTheme, sessionToday } from '@/lib/data';
 import { EmptyState, Pagina } from '@/components/ui';
 import { TrainerBoard } from '@/components/TrainerBoard';
 
@@ -21,9 +21,20 @@ const PUNTOS_SESION = 8;
  * hacia `select('*')` y mandaba cuatro campos: `played_uci`, `cp_loss` y `win_pct_loss` se leian
  * de la base y se tiraban, que es justo el material con el que ahora se explica el error.
  */
-export default async function EntrenadorPage() {
+export default async function EntrenadorPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ partida?: string; ply?: string }>;
+}) {
+  // `/partida/[id]` enlaza a una posicion concreta; sin esos parametros se sirve la cola normal.
+  const { partida, ply } = await searchParams;
+  const pedido =
+    partida && ply ? { gameId: Number.parseInt(partida, 10), ply: Number.parseInt(ply, 10) } : null;
+
   const [puzzle, pendientes, porTema, sesion] = await Promise.all([
-    nextDuePuzzle(),
+    pedido && Number.isFinite(pedido.gameId) && Number.isFinite(pedido.ply)
+      ? puzzleAt(pedido.gameId, pedido.ply).then((p) => p ?? nextDuePuzzle())
+      : nextDuePuzzle(),
     dueCount(),
     puzzleStatsByTheme(),
     sessionToday(),

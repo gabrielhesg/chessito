@@ -434,7 +434,7 @@ export function TrainerBoard({
             <div className="flex flex-col gap-2 text-[12.5px]">
               {patrones.map((p) => (
                 <div key={p.etiqueta} className="flex items-center gap-2.5" title={p.titulo}>
-                  <span className="w-[130px] shrink-0 text-texto-suave">{p.etiqueta}</span>
+                  <span className="w-[92px] shrink-0 text-texto-suave sm:w-[130px]">{p.etiqueta}</span>
                   <span className="h-2 flex-1 overflow-hidden rounded-full bg-borde">
                     <span
                       className="block h-full rounded-full bg-acento"
