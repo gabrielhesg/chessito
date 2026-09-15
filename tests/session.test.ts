@@ -63,19 +63,21 @@ describe('searchStreaming', () => {
     expect(t.enviados).toContain('position startpos');
   });
 
-  it('stop() no resuelve hasta que el motor confirma con bestmove', async () => {
+  it('`terminada` no resuelve hasta que el motor confirma con bestmove', async () => {
     const t = transporteFalso();
     const sesion = new UciSession(t);
     const handle = sesion.searchStreaming([], { depth: 20, multiPv: 1, onUpdate: () => undefined });
 
     let resuelto = false;
-    const espera = handle.stop().then(() => {
+    const espera = handle.terminada.then(() => {
       resuelto = true;
     });
 
+    handle.stop();
     expect(t.enviados).toContain('stop');
-    // Todavia no: el motor no contesto. Es el bug que hace que los `info` de la busqueda vieja
-    // se mezclen con los de la nueva si uno arranca la siguiente antes de tiempo.
+
+    // Todavia no: pedir `stop` no es que el motor haya parado. Encadenar la siguiente busqueda
+    // aca es justo lo que mezcla los `info` de dos posiciones distintas.
     await Promise.resolve();
     expect(resuelto).toBe(false);
 
@@ -84,13 +86,24 @@ describe('searchStreaming', () => {
     expect(resuelto).toBe(true);
   });
 
-  it('stop() sobre una busqueda ya terminada resuelve de inmediato', async () => {
+  it('una busqueda que termina sola resuelve `terminada` sin que nadie pida stop', async () => {
     const t = transporteFalso();
     const sesion = new UciSession(t);
     const handle = sesion.searchStreaming([], { depth: 4, multiPv: 1, onUpdate: () => undefined });
 
     t.emitir('bestmove e2e4');
-    await expect(handle.stop()).resolves.toBeUndefined();
+    await expect(handle.terminada).resolves.toBeUndefined();
+    expect(t.enviados).not.toContain('stop');
+  });
+
+  it('stop() sobre una busqueda ya terminada no manda nada al motor', () => {
+    const t = transporteFalso();
+    const sesion = new UciSession(t);
+    const handle = sesion.searchStreaming([], { depth: 4, multiPv: 1, onUpdate: () => undefined });
+
+    t.emitir('bestmove e2e4');
+    handle.stop();
+    expect(t.enviados).not.toContain('stop');
   });
 
   it('despues del bestmove las lineas dejan de llegar: no contaminan la siguiente busqueda', () => {

@@ -43,8 +43,20 @@ export type EvalLine = {
 };
 
 export type SearchHandle = {
-  /** Detiene la busqueda y resuelve cuando el motor confirmo con `bestmove`. */
-  stop(): Promise<void>;
+  /**
+   * Pide al motor que corte. NO espera: para saber cuando corto de verdad hay que esperar
+   * `terminada`. Llamarlo dos veces no hace dano.
+   */
+  stop(): void;
+  /**
+   * Resuelve cuando el motor mando `bestmove`, sea porque llego a la profundidad pedida o
+   * porque se le pidio parar.
+   *
+   * Es la pieza que evita el bug de verdad: quien encadena busquedas DEBE esperar esto antes de
+   * mandar la siguiente posicion. Si no, los `info` de la busqueda vieja se mezclan con los de
+   * la nueva y la pantalla muestra lineas de otra posicion.
+   */
+  terminada: Promise<void>;
 };
 
 export class UciSession {
@@ -234,16 +246,16 @@ export class UciSession {
     this.send(this.posicion(uciMoves));
     this.send(`go depth ${opciones.depth}`);
 
+    const finPromesa = new Promise<void>((resolve) => {
+      if (terminada) resolve();
+      else resolverFin = resolve;
+    });
+
     return {
-      stop: () =>
-        new Promise<void>((resolve) => {
-          if (terminada) {
-            resolve();
-            return;
-          }
-          resolverFin = resolve;
-          this.send('stop');
-        }),
+      stop: () => {
+        if (!terminada) this.send('stop');
+      },
+      terminada: finPromesa,
     };
   }
 

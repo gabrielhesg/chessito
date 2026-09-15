@@ -81,11 +81,15 @@ export const config = {
     /*
      * Todo menos:
      *  - /api/ingest       la llama el cron con un bearer, NUNCA con sesion
+     *  - /stockfish        el motor WASM que carga el Web Worker del analisis interactivo.
+     *                      Sin esta excepcion el worker recibe el HTML de /entrar en vez del
+     *                      motor y falla con un error que no dice nada. Es un binario publico
+     *                      GPL, no hay nada que proteger.
      *  - estaticos de Next y el favicon
      *
      * Cualquier otra ruta nueva nace DENTRO del gate. El flujo OTP se resuelve con server
      * actions en /entrar, que el propio middleware deja pasar sin sesion.
      */
-    '/((?!api/ingest|_next/static|_next/image|favicon.ico).*)',
+    '/((?!api/ingest|stockfish|_next/static|_next/image|favicon.ico).*)',
   ],
 };
