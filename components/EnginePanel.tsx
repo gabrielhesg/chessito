@@ -117,7 +117,11 @@ export function EnginePanel({
   // La jugada que se esta mirando, para la miniatura. Se abre con el mouse Y con foco o tap: en
   // el celular, que es como se usa la app la mayor parte del tiempo, "pasar el mouse" no existe.
   // La Fase 5 ya borro `Muestra`/`title=` por exactamente esta razon.
-  const [mirando, setMirando] = useState<PasoDeLinea | null>(null);
+  // `fijado` distingue el hover (se va al salir) del tap o click (se queda hasta tocar otra
+  // jugada o la misma). En el celular un tap dispara `mouseenter`, `focus`, `click` y
+  // `mouseleave` en ese orden: sin `fijado`, el `mouseleave` del final cerraba la miniatura en el
+  // mismo gesto que la abria y no se veia nada.
+  const [mirando, setMirando] = useState<{ paso: PasoDeLinea; fijado: boolean } | null>(null);
 
   return (
     <div className="rounded-xl border border-borde bg-panel px-4 py-3.5">
@@ -160,11 +164,17 @@ export function EnginePanel({
                   <button
                     key={`${paso.san}-${i}`}
                     type="button"
-                    onMouseEnter={() => setMirando(paso)}
-                    onMouseLeave={() => setMirando((v) => (v === paso ? null : v))}
-                    onFocus={() => setMirando(paso)}
-                    onBlur={() => setMirando((v) => (v === paso ? null : v))}
-                    onClick={() => setMirando((v) => (v === paso ? null : paso))}
+                    onMouseEnter={() => setMirando((v) => (v?.fijado ? v : { paso, fijado: false }))}
+                    onMouseLeave={() =>
+                      setMirando((v) => (v && !v.fijado && v.paso === paso ? null : v))
+                    }
+                    onFocus={() => setMirando((v) => (v?.fijado ? v : { paso, fijado: false }))}
+                    onBlur={() => setMirando((v) => (v && !v.fijado && v.paso === paso ? null : v))}
+                    onClick={() =>
+                      setMirando((v) =>
+                        v?.fijado && v.paso === paso ? null : { paso, fijado: true },
+                      )
+                    }
                     /* Sin `uppercase`: en notacion de ajedrez la caja es significativa. */
                     className="rounded px-0.5 font-mono text-[12.5px] text-texto-suave transition-colors hover:bg-panel-alto hover:text-texto"
                   >
@@ -178,11 +188,13 @@ export function EnginePanel({
           {mirando ? (
             <div className="pointer-events-none absolute right-0 bottom-full z-20 mb-2 rounded-lg border border-borde bg-panel p-1.5 shadow-lg">
               <MiniBoard
-                fen={mirando.fen}
+                fen={mirando.paso.fen}
                 orientacion={orientacion}
-                resaltadas={[mirando.desde, mirando.hasta]}
+                resaltadas={[mirando.paso.desde, mirando.paso.hasta]}
               />
-              <p className="mt-1 text-center font-mono text-[11px] text-tenue">{mirando.san}</p>
+              <p className="mt-1 text-center font-mono text-[11px] text-tenue">
+                {mirando.paso.san}
+              </p>
             </div>
           ) : null}
         </ol>

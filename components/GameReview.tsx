@@ -405,8 +405,9 @@ export function GameReview({
 
         {!enPrincipal ? (
           <p className="mt-3.5 rounded-xl border border-dashed border-acento/40 bg-acento/[0.06] px-4 py-3 text-[13px] leading-relaxed text-texto-suave">
-            Estás en una variación: estas jugadas no se jugaron. Sigue moviendo para explorarla, o
-            vuelve a la partida real. Enciende el motor para ver qué opina de esta posición.
+            Estás en una variación: estas jugadas no se jugaron, así que no hay clasificación ni
+            tiempo guardados. El puntaje de la barra lo está calculando el motor. Sigue moviendo
+            para explorarla, o vuelve a la partida real.
           </p>
         ) : datos ? (
           <div className={`mt-3.5 rounded-xl border px-4 py-3.5 ${tonoTarjeta}`}>
