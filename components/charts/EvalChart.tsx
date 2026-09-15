@@ -1,8 +1,12 @@
-'use client';
+"use client";
 
-import { caminoAreaCurva, caminoCurva, type Punto } from '@/lib/charts/path';
-import { escalaLineal } from '@/lib/charts/scale';
-import { winPct } from '@/lib/analysis/winpct';
+import {
+  caminoAreaMonotono,
+  caminoMonotono,
+  type Punto,
+} from "@/lib/charts/path";
+import { escalaLineal } from "@/lib/charts/scale";
+import { winPct } from "@/lib/analysis/winpct";
 
 export type PuntoEval = {
   ply: number;
@@ -41,10 +45,10 @@ export function EvalChart({
 
   const ANCHO = 1000;
   // La evaluacion de una partida es una senal continua, no una serie de escalones: la curva se
-  // lee mucho mejor que la linea quebrada. `limiteY` es obligatorio y no decorativo — una
-  // Catmull-Rom sobrepasa el rango al pasar por un pico, y un mate seguido de una posicion
-  // igualada es justo ese caso, asi que sin el recorte la curva se sale de la caja del SVG.
-  const CURVA = { tension: 1, limiteY: [0, alto] as [number, number] };
+  // lee mucho mejor que la linea quebrada. La interpolacion es MONOTONA y no Catmull-Rom: la
+  // Catmull-Rom se pasa del rango al pasar por un pico y habia que recortar sus puntos de
+  // control, lo que quiebra la tangente en cada pico — en una partida larga con mates, decenas de
+  // quiebres, y la curva no se veia suave. La monotona no se pasa por construccion.
   const maxPly = Math.max(...puntos.map((p) => p.ply));
   const x = escalaLineal([1, maxPly], [0, ANCHO]);
   const y = escalaLineal([0, 100], [alto, 0]);
@@ -63,69 +67,98 @@ export function EvalChart({
     { ultima: 50, puntos: [] },
   ).puntos;
 
-  const blunders = puntos.filter((p) => p.classification === 3 && p.evalCp !== null);
+  const blunders = puntos.filter(
+    (p) => p.classification === 3 && p.evalCp !== null,
+  );
   const xActual = x(plyActual);
 
   return (
-    <div className="relative">
-      <svg
-        viewBox={`0 0 ${ANCHO} ${alto}`}
-        preserveAspectRatio="none"
-        className="w-full cursor-pointer"
-        style={{ height: alto }}
-        role="img"
-        aria-label="Evaluación de la partida jugada a jugada"
-        onClick={(e) => {
-          const caja = e.currentTarget.getBoundingClientRect();
-          const proporcion = (e.clientX - caja.left) / caja.width;
-          const ply = Math.round(1 + proporcion * (maxPly - 1));
-          onSeleccionar(Math.max(1, Math.min(maxPly, ply)));
-        }}
-      >
-        <rect x={0} y={0} width={ANCHO} height={alto} fill="var(--color-ventaja-negras)" opacity={0.25} />
-        <path d={caminoAreaCurva(serie, cero, CURVA)} fill="var(--color-ventaja-blancas)" opacity={0.85} />
-        <line x1={0} y1={cero} x2={ANCHO} y2={cero} stroke="var(--color-eje)" strokeWidth={1} vectorEffect="non-scaling-stroke" />
-        <path
-          d={caminoCurva(serie, CURVA)}
-          fill="none"
-          stroke="var(--color-texto)"
-          strokeWidth={1}
-          opacity={0.5}
-          vectorEffect="non-scaling-stroke"
-        />
-
-        {blunders.map((b) => (
-          <circle
-            key={b.ply}
-            cx={x(b.ply)}
-            cy={y(winPct(b.evalCp ?? 0))}
-            r={4}
-            fill="var(--color-critico)"
-            stroke="var(--color-panel)"
-            strokeWidth={1.5}
+    <div>
+      {/* El contenedor de los marcadores es SOLO el grafico: si fuera el bloque entero, el
+          porcentaje vertical contaria tambien el pie de texto y los puntos quedarian corridos. */}
+      <div className="relative" style={{ height: alto }}>
+        <svg
+          viewBox={`0 0 ${ANCHO} ${alto}`}
+          preserveAspectRatio="none"
+          className="w-full cursor-pointer"
+          style={{ height: alto }}
+          role="img"
+          aria-label="Evaluación de la partida jugada a jugada"
+          onClick={(e) => {
+            const caja = e.currentTarget.getBoundingClientRect();
+            const proporcion = (e.clientX - caja.left) / caja.width;
+            const ply = Math.round(1 + proporcion * (maxPly - 1));
+            onSeleccionar(Math.max(1, Math.min(maxPly, ply)));
+          }}
+        >
+          <rect
+            x={0}
+            y={0}
+            width={ANCHO}
+            height={alto}
+            fill="var(--color-ventaja-negras)"
+            opacity={0.25}
+          />
+          <path
+            d={caminoAreaMonotono(serie, cero)}
+            fill="var(--color-ventaja-blancas)"
+            opacity={0.85}
+          />
+          <line
+            x1={0}
+            y1={cero}
+            x2={ANCHO}
+            y2={cero}
+            stroke="var(--color-eje)"
+            strokeWidth={1}
             vectorEffect="non-scaling-stroke"
-          >
-            <title>{`Ply ${b.ply} · ${b.san} · error grave`}</title>
-          </circle>
-        ))}
+          />
+          <path
+            d={caminoMonotono(serie)}
+            fill="none"
+            stroke="var(--color-texto)"
+            strokeWidth={1}
+            opacity={0.5}
+            vectorEffect="non-scaling-stroke"
+          />
 
-        <line
-          x1={xActual}
-          y1={0}
-          x2={xActual}
-          y2={alto}
-          stroke="var(--color-acento)"
-          strokeWidth={2}
-          vectorEffect="non-scaling-stroke"
-        />
-      </svg>
+          <line
+            x1={xActual}
+            y1={0}
+            x2={xActual}
+            y2={alto}
+            stroke="var(--color-acento)"
+            strokeWidth={2}
+            vectorEffect="non-scaling-stroke"
+          />
+        </svg>
+        {/* Los marcadores van en HTML sobre el SVG, no dentro de el. El SVG se estira a lo ancho
+          (`preserveAspectRatio="none"`), asi que un `<circle>` dibujado adentro sale ovalado —
+          `vectorEffect` arregla el trazo y no la geometria. Ademas asi son botones de verdad, con
+          texto que se abre con tap: su `<title>` de antes no existia en el celular. */}
+        {blunders.map((b) => (
+          <button
+            key={b.ply}
+            type="button"
+            onClick={() => onSeleccionar(b.ply)}
+            title={`Jugada ${Math.ceil(b.ply / 2)} · ${b.san} · error grave`}
+            aria-label={`Ir al error grave de la jugada ${Math.ceil(b.ply / 2)}, ${b.san}`}
+            className="absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full border-[1.5px] border-panel bg-critico transition-transform hover:scale-150"
+            style={{
+              left: `${(x(b.ply) / ANCHO) * 100}%`,
+              top: `${(y(winPct(b.evalCp ?? 0)) / alto) * 100}%`,
+            }}
+          />
+        ))}
+      </div>
+
       <div className="mt-1 flex justify-between text-2xs text-apagado">
         <span>Haz click para saltar a esa jugada</span>
         <span>
           {blunders.length === 0
-            ? 'Sin errores graves'
+            ? "Sin errores graves"
             : blunders.length === 1
-              ? '1 error grave marcado'
+              ? "1 error grave marcado"
               : `${blunders.length} errores graves marcados`}
         </span>
       </div>

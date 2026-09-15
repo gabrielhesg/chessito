@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { acotar, escalaLineal, ticksLegibles } from '@/lib/charts/scale';
-import { caminoArea, caminoAreaCurva, caminoCurva, caminoLinea } from '@/lib/charts/path';
+import {
+  caminoArea,
+  caminoAreaCurva,
+  caminoAreaMonotono,
+  caminoCurva,
+  caminoLinea,
+  caminoMonotono,
+} from '@/lib/charts/path';
 
 describe('escalaLineal', () => {
   it('mapea los extremos del dominio a los extremos del rango', () => {
@@ -164,5 +171,67 @@ describe('caminoAreaCurva', () => {
 
   it('sin puntos no dibuja nada', () => {
     expect(caminoAreaCurva([], 50)).toBe('');
+  });
+});
+
+describe('caminoMonotono', () => {
+  /** Todas las coordenadas del camino, incluidas las de los puntos de control. */
+  function coordenadasY(d: string): number[] {
+    const numeros = d.match(/-?\d+(\.\d+)?/g)?.map(Number) ?? [];
+    // Van en pares x,y desde el primer `M`; las impares son las y.
+    return numeros.filter((_, i) => i % 2 === 1);
+  }
+
+  it('menos de tres puntos cae a la linea recta', () => {
+    expect(caminoMonotono([])).toBe('');
+    expect(caminoMonotono([{ x: 0, y: 0 }])).toBe('M0 0');
+    expect(caminoMonotono([{ x: 0, y: 0 }, { x: 10, y: 5 }])).toBe('M0 0 L10 5');
+  });
+
+  it('pasa por todos los puntos', () => {
+    const puntos = [
+      { x: 0, y: 60 },
+      { x: 10, y: 20 },
+      { x: 20, y: 80 },
+      { x: 30, y: 40 },
+    ];
+    const d = caminoMonotono(puntos);
+    for (const p of puntos) expect(d).toContain(`${p.x} ${p.y}`);
+  });
+
+  /**
+   * Es LA propiedad, y es la razon de existir de esta funcion: `caminoCurva` se pasaba del rango
+   * al cruzar un pico y habia que recortarle los puntos de control (lo que le quiebra la
+   * tangente). Un mate seguido de una posicion igualada es exactamente ese caso.
+   */
+  it('no se sale del rango de los datos ni siquiera con un pico de mate', () => {
+    const ALTO = 120;
+    const puntos = [
+      { x: 0, y: 60 },
+      { x: 100, y: 58 },
+      { x: 200, y: 0 }, // mate: tope del grafico
+      { x: 300, y: 60 }, // y de vuelta a una posicion igualada
+      { x: 400, y: 62 },
+      { x: 500, y: ALTO }, // mate del otro lado
+      { x: 600, y: 59 },
+    ];
+    for (const y of coordenadasY(caminoMonotono(puntos))) {
+      expect(y).toBeGreaterThanOrEqual(0);
+      expect(y).toBeLessThanOrEqual(ALTO);
+    }
+  });
+
+  it('la version de area cierra contra la linea base', () => {
+    const d = caminoAreaMonotono(
+      [
+        { x: 0, y: 10 },
+        { x: 10, y: 20 },
+        { x: 20, y: 15 },
+      ],
+      50,
+    );
+    expect(d.startsWith('M0 50')).toBe(true);
+    expect(d.endsWith('L20 50 Z')).toBe(true);
+    expect(caminoAreaMonotono([], 50)).toBe('');
   });
 });

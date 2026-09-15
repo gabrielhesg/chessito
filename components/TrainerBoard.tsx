@@ -8,10 +8,14 @@ import { recordAttempt } from '@/lib/spaced-repetition/actions';
 import {
   conceptoDelError,
   describirLinea,
+  diferenciaEnPeones,
   explicarBlunder,
+  logroDeLaSolucion,
   type Explicacion,
   type Linea,
+  type PasoLinea,
 } from '@/lib/puzzles/explain';
+import { MiniBoardPopover, useMiniBoardPopover } from '@/components/MiniBoardPopover';
 import { useBrowserEngine } from '@/lib/engine/useBrowserEngine';
 import { Badge, Button } from '@/components/ui';
 
@@ -52,23 +56,61 @@ type Estado = 'jugando' | 'resuelto' | 'fallado';
  * Pinta la linea como la leeria un ajedrecista: `12.Nf3 Nc6 13.Bb5`. Una linea que arranca con
  * jugada de negras lleva los puntos suspensivos (`12...Qe7`), que es la convencion y ademas es
  * lo unico que deja claro de quien es la jugada.
+ *
+ * Cada jugada es tocable: posarse encima muestra la miniatura de esa posicion y hacer click lleva
+ * el TABLERO GRANDE hasta ahi. Sin eso la linea era texto muerto — decia cual era la jugada sin
+ * dejar ver que pasa despues, que es justo lo que hay que entender.
  */
-function LineaJugadas({ linea, desdePly }: { linea: Linea; desdePly: number }) {
+function LineaJugadas({
+  linea,
+  desdePly,
+  orientacion,
+  onIr,
+  plyMirado,
+}: {
+  linea: Linea;
+  desdePly: number;
+  orientacion: 'white' | 'black';
+  onIr: (paso: PasoLinea) => void;
+  /** El indice del paso que se esta viendo en el tablero grande, para resaltarlo. */
+  plyMirado: number | null;
+}) {
+  const { mirando, propsDePaso } = useMiniBoardPopover();
+
   return (
-    <ol className="flex flex-wrap items-baseline gap-x-2 gap-y-1 font-mono text-sm">
-      {linea.pasos.map((paso, i) => {
-        const plyAbsoluto = desdePly + i;
-        const numeroJugada = Math.ceil(plyAbsoluto / 2);
-        const esBlancas = plyAbsoluto % 2 === 1;
-        const prefijo = esBlancas ? `${numeroJugada}.` : i === 0 ? `${numeroJugada}...` : null;
-        return (
-          <li key={i} className="flex items-baseline gap-1">
-            {prefijo ? <span className="text-apagado">{prefijo}</span> : null}
-            <span className={paso.mia ? 'text-texto' : 'text-tenue'}>{paso.san}</span>
-          </li>
-        );
-      })}
-    </ol>
+    <div className="relative">
+      <ol className="flex flex-wrap items-baseline gap-x-2 gap-y-1 font-mono text-sm">
+        {linea.pasos.map((paso, i) => {
+          const plyAbsoluto = desdePly + i;
+          const numeroJugada = Math.ceil(plyAbsoluto / 2);
+          const esBlancas = plyAbsoluto % 2 === 1;
+          const prefijo = esBlancas ? `${numeroJugada}.` : i === 0 ? `${numeroJugada}...` : null;
+          return (
+            <li key={i} className="flex items-baseline gap-1">
+              {prefijo ? <span className="text-apagado">{prefijo}</span> : null}
+              <button
+                type="button"
+                {...propsDePaso(paso)}
+                onClick={() => onIr(paso)}
+                className={`rounded px-1 transition-colors hover:bg-panel-alto hover:text-texto ${
+                  i === plyMirado
+                    ? 'bg-acento/20 text-texto'
+                    : paso.mia
+                      ? 'text-texto'
+                      : 'text-tenue'
+                }`}
+              >
+                {paso.san}
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+      <MiniBoardPopover paso={mirando} orientacion={orientacion} posicion="abajo-izquierda" />
+      <p className="mt-2 text-[11.5px] text-apagado">
+        Toca una jugada para verla en el tablero.
+      </p>
+    </div>
   );
 }
 
@@ -92,15 +134,25 @@ function PanelExplicacion({
   puzzle,
   estado,
   estadoMotor,
+  orientacion,
+  onIr,
+  mirado,
 }: {
   explicacion: Explicacion;
   puzzle: PuzzleUI;
   estado: Estado;
   /** Para avisar que la linea se esta calculando en vez de decir que no existe. */
   estadoMotor: 'calculando' | 'listo' | 'sin-motor';
+  orientacion: 'white' | 'black';
+  /** Llevar el tablero grande a una jugada de una de las dos lineas. */
+  onIr: (linea: 'refutacion' | 'solucion', indice: number, paso: PasoLinea) => void;
+  /** Que jugada de que linea se esta mirando en el tablero grande. */
+  mirado: { linea: 'refutacion' | 'solucion'; indice: number } | null;
 }) {
   const { refutacion, solucion, jugadaSan, mejorSan, concepto } = explicacion;
   const material = refutacion?.materialPerdido ?? 0;
+  const logro = logroDeLaSolucion(solucion);
+  const diferencia = diferenciaEnPeones(puzzle.cpLoss);
 
   return (
     <div className="space-y-4 text-sm">
@@ -131,7 +183,13 @@ function PanelExplicacion({
             <span className="uppercase">pierde</span>
           </p>
           <div className="rounded-xl border border-borde bg-panel-alto px-4 py-3.5">
-            <LineaJugadas linea={refutacion} desdePly={puzzle.ply + 1} />
+            <LineaJugadas
+              linea={refutacion}
+              desdePly={puzzle.ply + 1}
+              orientacion={orientacion}
+              onIr={(paso) => onIr('refutacion', refutacion.pasos.indexOf(paso), paso)}
+              plyMirado={mirado?.linea === 'refutacion' ? mirado.indice : null}
+            />
             <p className="mt-2 text-xs text-tenue">
               {refutacion.terminaEnMate ? (
                 <>
@@ -179,15 +237,56 @@ function PanelExplicacion({
             <span className="font-mono text-texto">{mejorSan}</span>
           </p>
           <div className="rounded-xl border border-borde bg-panel-alto px-4 py-3.5">
-            <LineaJugadas linea={solucion} desdePly={puzzle.ply} />
+            <LineaJugadas
+              linea={solucion}
+              desdePly={puzzle.ply}
+              orientacion={orientacion}
+              onIr={(paso) => onIr('solucion', solucion.pasos.indexOf(paso), paso)}
+              plyMirado={mirado?.linea === 'solucion' ? mirado.indice : null}
+            />
+            {/* La linea sola no enseña: decia CUAL era la jugada y ni una palabra de que consigue. */}
+            {logro ? (
+              <p className="mt-2 text-xs text-tenue">
+                {logro.tipo === 'mate' ? (
+                  <>
+                    Das <strong className="text-bien">mate</strong> por la fuerza.
+                  </>
+                ) : logro.tipo === 'gana_material' ? (
+                  <>
+                    Ganas <strong className="text-bien">{logro.materialGanado}</strong>{' '}
+                    {logro.materialGanado === 1 ? 'punto' : 'puntos'} de material
+                    {logro.captura ? `: te llevas el ${logro.captura}` : ''}.
+                  </>
+                ) : (
+                  <>
+                    No gana material ni da mate: lo que hace {mejorSan} es{' '}
+                    <strong className="text-texto">no permitir</strong> lo de arriba.
+                  </>
+                )}
+              </p>
+            ) : null}
           </div>
         </div>
       ) : null}
 
+      {/* El contraste es la explicacion: no es "esta es mejor porque si", es cuanto separa a las
+          dos. Se dice como DIFERENCIA y no como dos evaluaciones porque `puzzles` guarda la
+          caida (`cp_loss`) y nunca guardo el valor absoluto de la posicion. */}
+      {diferencia > 0 ? (
+        <div className="rounded-xl border border-borde bg-panel px-4 py-3">
+          <p className="mb-1 font-mono text-[10.5px] font-medium uppercase tracking-[0.11em] text-tenue">
+            La diferencia
+          </p>
+          <p className="text-[13.5px] leading-relaxed text-texto-suave">
+            Entre <span className="font-mono text-texto">{mejorSan}</span> y{' '}
+            <span className="font-mono text-texto">{jugadaSan}</span> hay{' '}
+            <strong className="text-texto">{diferencia.toFixed(1)}</strong> puntos de diferencia
+            según el motor. Un punto es lo que vale un peón.
+          </p>
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap items-center gap-2 text-xs text-tenue">
-        <span>
-          Costó <strong className="text-texto">{(puzzle.cpLoss / 100).toFixed(1)}</strong> puntos
-        </span>
         {!puzzle.isUnique && puzzle.secondBestUci ? (
           <Badge tono="acento">Había más de una jugada buena</Badge>
         ) : null}
@@ -250,6 +349,29 @@ export function TrainerBoard({
    */
   const [jugadaProbada, setJugadaProbada] = useState<string | null>(null);
   const [flechas, setFlechas] = useState<Array<{ startSquare: string; endSquare: string; color: string }>>([]);
+
+  /**
+   * La posicion que se esta MIRANDO, distinta de la que se esta jugando.
+   *
+   * Son dos estados a proposito y no uno. `position` es la partida del ejercicio, que avanza al
+   * acertar; `vista` es lo que se dibuja mientras se recorre una linea o mientras corre la
+   * animacion de la refutacion. Con un solo estado, la animacion (una cadena de `setTimeout`) y
+   * el click en una jugada se pisan y el tablero pelea consigo mismo.
+   */
+  const [vista, setVista] = useState<{
+    fen: string;
+    flechas: Array<{ startSquare: string; endSquare: string; color: string }>;
+    /** Que jugada de que linea es, para resaltarla en el texto. */
+    donde: { linea: 'refutacion' | 'solucion'; indice: number } | null;
+  } | null>(null);
+
+  /** Los temporizadores de la animacion, para poder cortarla al tocar una jugada. */
+  const temporizadoresRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const limpiarAnimacion = useCallback(() => {
+    for (const id of temporizadoresRef.current) clearTimeout(id);
+    temporizadoresRef.current = [];
+  }, []);
+  useEffect(() => limpiarAnimacion, [limpiarAnimacion]);
 
   // El cronometro arranca al montar, no durante el render: `performance.now()` es impuro y en
   // render puede correr mas de una vez, lo que daria tiempos inventados.
@@ -340,23 +462,60 @@ export function TrainerBoard({
     };
 
     if (!jugar(puzzle.playedUci)) return;
-    setPosition(tablero.fen());
-    setFlechas([
-      { startSquare: puzzle.playedUci.slice(0, 2), endSquare: puzzle.playedUci.slice(2, 4), color: '#e0604f' },
-    ]);
+    setVista({
+      fen: tablero.fen(),
+      flechas: [
+        { startSquare: puzzle.playedUci.slice(0, 2), endSquare: puzzle.playedUci.slice(2, 4), color: '#e0604f' },
+      ],
+      donde: null,
+    });
 
     const linea = puzzle.refutationLine ?? [];
     linea.forEach((uci, i) => {
-      setTimeout(
-        () => {
-          if (!jugar(uci)) return;
-          setPosition(tablero.fen());
-          setFlechas([{ startSquare: uci.slice(0, 2), endSquare: uci.slice(2, 4), color: '#e0604f' }]);
-        },
-        600 * (i + 1),
+      temporizadoresRef.current.push(
+        setTimeout(
+          () => {
+            if (!jugar(uci)) return;
+            setVista({
+              fen: tablero.fen(),
+              flechas: [{ startSquare: uci.slice(0, 2), endSquare: uci.slice(2, 4), color: '#e0604f' }],
+              donde: { linea: 'refutacion', indice: i },
+            });
+          },
+          600 * (i + 1),
+        ),
       );
     });
   }, [puzzle.fen, puzzle.playedUci, puzzle.refutationLine]);
+
+  /** Llevar el tablero a una jugada de una de las dos lineas. Corta la animacion si corria. */
+  const irAPaso = useCallback(
+    (linea: 'refutacion' | 'solucion', indice: number, paso: PasoLinea) => {
+      limpiarAnimacion();
+      setVista({
+        fen: paso.fen,
+        flechas: [
+          {
+            startSquare: paso.desde,
+            endSquare: paso.hasta,
+            color: linea === 'refutacion' ? '#e0604f' : '#199e70',
+          },
+        ],
+        donde: { linea, indice },
+      });
+    },
+    [limpiarAnimacion],
+  );
+
+  /**
+   * Volver a la posicion del ejercicio. Restaura desde `game.fen()` y NO desde `puzzle.fen`: si
+   * se camino la solucion, la partida del ejercicio ya avanzo y no son la misma posicion.
+   */
+  const volverAlEjercicio = useCallback(() => {
+    limpiarAnimacion();
+    setVista(null);
+    setPosition(game.fen());
+  }, [limpiarAnimacion, game]);
 
   const cerrar = useCallback(
     (resuelto: boolean, playedUci: string, numeroIntento: number) => {
@@ -469,7 +628,9 @@ export function TrainerBoard({
     })();
   }, [router]);
 
-  const tocaMover = estado === 'jugando';
+  // Mientras se mira otra posicion no se arrastra: la jugada iria sobre un tablero que no es el
+  // del ejercicio.
+  const tocaMover = estado === 'jugando' && vista === null;
 
   return (
     <div className="grid gap-[26px] lg:grid-cols-[minmax(0,460px)_1fr]">
@@ -477,11 +638,11 @@ export function TrainerBoard({
         <div className="overflow-hidden rounded-xl">
           <Chessboard
             options={{
-              position,
+              position: vista?.fen ?? position,
               onPieceDrop,
               boardOrientation: orientacion,
               allowDragging: tocaMover,
-              arrows: flechas,
+              arrows: vista?.flechas ?? flechas,
               darkSquareStyle: { backgroundColor: '#769656' },
               lightSquareStyle: { backgroundColor: '#eeeed2' },
             }}
@@ -490,6 +651,11 @@ export function TrainerBoard({
         <div className="mt-3 flex flex-wrap items-center gap-2 text-[12.5px] text-tenue">
           <Badge tono="acento">{orientacion === 'white' ? 'Juegan blancas' : 'Juegan negras'}</Badge>
           {puzzle.theme && NOMBRE_THEME[puzzle.theme] ? <Badge>{NOMBRE_THEME[puzzle.theme]}</Badge> : null}
+          {vista ? (
+            <Button variante="fantasma" onClick={volverAlEjercicio}>
+              Volver a la posición
+            </Button>
+          ) : null}
           <span className="ml-auto font-mono text-[11.5px] text-apagado">{dueCount} pendientes</span>
         </div>
       </div>
@@ -523,6 +689,9 @@ export function TrainerBoard({
               puzzle={puzzle}
               estado={estado}
               estadoMotor={estadoMotor}
+              orientacion={orientacion}
+              onIr={irAPaso}
+              mirado={vista?.donde ?? null}
             />
             <Button variante="primario" onClick={siguiente}>
               Siguiente ejercicio

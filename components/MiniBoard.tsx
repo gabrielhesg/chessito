@@ -1,49 +1,19 @@
+'use client';
+
+import { defaultPieces, fenStringToPositionObject } from 'react-chessboard';
+
 /**
  * Un tablero chico, solo para mirar: recibe un FEN y lo dibuja.
  *
- * No usa `react-chessboard` a proposito. Ese componente trae drag-and-drop, flechas y un
- * `ResizeObserver` por instancia, y aca se montan varias miniaturas a la vez en un popover que
- * aparece y desaparece. Esto son 64 divs y un caracter Unicode por pieza.
+ * Usa las MISMAS piezas y la MISMA conversion de FEN que el tablero grande
+ * (`defaultPieces` y `fenStringToPositionObject`, los dos exportados por `react-chessboard`), asi
+ * que la miniatura no puede discrepar de lo que se ve al lado. Antes dibujaba caracteres Unicode
+ * y por eso las piezas se veian de otra familia.
  *
- * Es presentacion pura y sin estado: la validacion de la posicion ya la hizo `chess.js` aguas
- * arriba, aca solo se lee el campo de piezas del FEN.
+ * Lo que NO se usa es el componente `<Chessboard>`: trae drag-and-drop, flechas y un
+ * `ResizeObserver` por instancia, y aca se monta y desmonta una miniatura cada vez que el mouse
+ * pasa por una jugada.
  */
-
-const PIEZAS: Record<string, string> = {
-  K: '♔',
-  Q: '♕',
-  R: '♖',
-  B: '♗',
-  N: '♘',
-  P: '♙',
-  k: '♚',
-  q: '♛',
-  r: '♜',
-  b: '♝',
-  n: '♞',
-  p: '♟',
-};
-
-/**
- * El campo de piezas del FEN a 64 casillas, de a8 a h1. Un FEN corto o corrupto devuelve las
- * casillas que alcance y rellena el resto vacias: una miniatura incompleta es mejor que tirar.
- */
-export function casillasDesdeFen(fen: string): string[] {
-  const filas = (fen.split(' ')[0] ?? '').split('/');
-  const casillas: string[] = [];
-  for (let i = 0; i < 8; i += 1) {
-    const fila = filas[i] ?? '';
-    const deLaFila: string[] = [];
-    for (const caracter of fila) {
-      const vacias = Number.parseInt(caracter, 10);
-      if (Number.isNaN(vacias)) deLaFila.push(caracter);
-      else for (let j = 0; j < vacias; j += 1) deLaFila.push('');
-    }
-    for (let c = 0; c < 8; c += 1) casillas.push(deLaFila[c] ?? '');
-  }
-  return casillas;
-}
-
 export function MiniBoard({
   fen,
   orientacion = 'white',
@@ -57,43 +27,51 @@ export function MiniBoard({
   /** Casillas en notacion algebraica (`e2`, `e4`), para marcar la jugada que se esta mirando. */
   resaltadas?: readonly string[];
 }) {
-  const casillas = casillasDesdeFen(fen);
-  // Los indices van de a8 a h1; con negras abajo se recorre al reves.
-  const orden = orientacion === 'white' ? casillas : [...casillas].reverse();
+  const posicion = fenStringToPositionObject(fen, 8, 8);
+
+  const filas = orientacion === 'white' ? [8, 7, 6, 5, 4, 3, 2, 1] : [1, 2, 3, 4, 5, 6, 7, 8];
+  const columnas =
+    orientacion === 'white'
+      ? ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+      : ['h', 'g', 'f', 'e', 'd', 'c', 'b', 'a'];
 
   return (
     <div
       className="grid overflow-hidden rounded-md border border-borde"
-      style={{ width: lado, height: lado, gridTemplateColumns: 'repeat(8, 1fr)' }}
+      style={{
+        width: lado,
+        height: lado,
+        gridTemplateColumns: 'repeat(8, 1fr)',
+        // Las filas TAMBIEN van declaradas. Sin esto se auto-dimensionan al contenido, se
+        // desbordan del alto fijo y el tablero queda descuadrado — se veia en las miniaturas del
+        // panel del motor.
+        gridTemplateRows: 'repeat(8, 1fr)',
+      }}
       aria-hidden="true"
     >
-      {orden.map((pieza, indice) => {
-        const real = orientacion === 'white' ? indice : 63 - indice;
-        const columna = real % 8;
-        const fila = Math.floor(real / 8);
-        const nombre = `${'abcdefgh'[columna]}${8 - fila}`;
-        const oscura = (columna + fila) % 2 === 1;
-        return (
-          <div
-            key={nombre}
-            className="flex items-center justify-center leading-none"
-            style={{
-              backgroundColor: resaltadas.includes(nombre)
-                ? '#b9ca43'
-                : oscura
-                  ? '#769656'
-                  : '#eeeed2',
-              fontSize: lado / 9,
-              // Las piezas blancas de Unicode son huecas y se pierden sobre la casilla clara: el
-              // contorno oscuro es lo que las hace legibles a este tamano.
-              color: pieza === pieza.toUpperCase() ? '#ffffff' : '#111111',
-              textShadow: pieza === pieza.toUpperCase() ? '0 0 1.5px #000' : 'none',
-            }}
-          >
-            {PIEZAS[pieza] ?? ''}
-          </div>
-        );
-      })}
+      {filas.flatMap((fila, indiceFila) =>
+        columnas.map((columna, indiceColumna) => {
+          const casilla = `${columna}${fila}`;
+          const pieza = posicion[casilla];
+          const Pieza = pieza ? defaultPieces[pieza.pieceType] : undefined;
+          const oscura = (indiceFila + indiceColumna) % 2 === 1;
+          return (
+            <div
+              key={casilla}
+              className="relative"
+              style={{
+                backgroundColor: resaltadas.includes(casilla)
+                  ? '#b9ca43'
+                  : oscura
+                    ? '#769656'
+                    : '#eeeed2',
+              }}
+            >
+              {Pieza ? <Pieza /> : null}
+            </div>
+          );
+        }),
+      )}
     </div>
   );
 }

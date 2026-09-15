@@ -32,6 +32,14 @@ export type PasoLinea = {
   captura?: { pieza: string; nombre: string; valor: number };
   jaque: boolean;
   mate: boolean;
+  /**
+   * El FEN DESPUES de la jugada, y sus dos casillas. El tablero ya se esta reproduciendo aca
+   * dentro y antes se tiraba; con esto la UI puede dibujar la miniatura de cualquier jugada de la
+   * linea y llevar el tablero grande hasta ahi, sin volver a calcular nada.
+   */
+  fen: string;
+  desde: string;
+  hasta: string;
 };
 
 export type Linea = {
@@ -166,6 +174,9 @@ export function describirLinea(fen: string, lineaUci: readonly string[], mueveEl
         : {}),
       jaque: chess.isCheck(),
       mate: chess.isCheckmate(),
+      fen: chess.fen(),
+      desde: jugada.from,
+      hasta: jugada.to,
     });
 
     if (chess.isGameOver()) break;
@@ -242,4 +253,48 @@ export function explicarBlunder({
     cpLoss,
     concepto: conceptoDelError({ fen, playedUci, refutacion, cpLoss }),
   };
+}
+
+export type Logro = {
+  tipo: 'mate' | 'gana_material' | 'evita_el_castigo';
+  /** Material neto que GANAS en la linea, en peones. 0 cuando la jugada no gana material. */
+  materialGanado: number;
+  /** La primera pieza que capturas en la linea, si capturas alguna. */
+  captura: string | null;
+};
+
+/**
+ * Que lograba la jugada correcta, en hechos.
+ *
+ * Existe porque el recuadro "Que lograba Rb1" mostraba una linea de jugadas y ni una palabra:
+ * saber CUAL era la jugada no enseña nada si no se dice que consigue. Sale de los mismos hechos
+ * que ya cuenta `describirLinea`, asi que no inventa nada.
+ *
+ * `evita_el_castigo` no es una respuesta pobre, es la respuesta honesta y la mas comun: en la
+ * mayoria de los ejercicios la jugada buena no gana nada, simplemente no permite lo que si pasa
+ * en la otra linea. Decir eso es mejor que callar o que adornar.
+ */
+export function logroDeLaSolucion(solucion: Linea | null): Logro | null {
+  if (!solucion) return null;
+  if (solucion.terminaEnMate) {
+    return { tipo: 'mate', materialGanado: 0, captura: null };
+  }
+  // `materialPerdido` es en perspectiva del lado del ejercicio: negativo significa que ganas tu.
+  const ganado = -solucion.materialPerdido;
+  const primeraCaptura = solucion.pasos.find((p) => p.mia && p.captura)?.captura?.nombre ?? null;
+  if (ganado > 0) {
+    return { tipo: 'gana_material', materialGanado: ganado, captura: primeraCaptura };
+  }
+  return { tipo: 'evita_el_castigo', materialGanado: 0, captura: null };
+}
+
+/**
+ * La diferencia entre las dos jugadas, en peones.
+ *
+ * Es la CAIDA, no las dos evaluaciones: `puzzles` guarda `cp_loss` y nunca guardo el valor
+ * absoluto de la posicion. Por eso la frase que se arma con esto dice "entre las dos hay X puntos
+ * de diferencia" y no "tu jugada deja la posicion en X", que seria un numero que no tenemos.
+ */
+export function diferenciaEnPeones(cpLoss: number): number {
+  return Math.round(cpLoss) / 100;
 }

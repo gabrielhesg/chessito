@@ -1,22 +1,19 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Chess } from 'chess.js';
 import type { EvalLine } from '@/lib/engine/session';
 import type { EngineStatus } from '@/lib/engine/useBrowserEngine';
 import { toWhitePerspective } from '@/lib/analysis/signs';
 import { cpAPeones } from '@/components/ui';
-import { MiniBoard } from '@/components/MiniBoard';
+import {
+  MiniBoardPopover,
+  useMiniBoardPopover,
+  type PasoMirable,
+} from '@/components/MiniBoardPopover';
 
 /** Una jugada de una linea del motor, con la posicion que deja. */
-export type PasoDeLinea = {
-  san: string;
-  /** El FEN DESPUES de la jugada: es lo que dibuja la miniatura. */
-  fen: string;
-  /** Casilla de origen y destino, para marcarlas en la miniatura. */
-  desde: string;
-  hasta: string;
-};
+export type PasoDeLinea = PasoMirable;
 
 /**
  * Traduce una linea UCI a notacion algebraica desde un FEN, devolviendo ademas la posicion que
@@ -114,14 +111,9 @@ export function EnginePanel({
 
   const mensaje = MENSAJE[status];
 
-  // La jugada que se esta mirando, para la miniatura. Se abre con el mouse Y con foco o tap: en
-  // el celular, que es como se usa la app la mayor parte del tiempo, "pasar el mouse" no existe.
-  // La Fase 5 ya borro `Muestra`/`title=` por exactamente esta razon.
-  // `fijado` distingue el hover (se va al salir) del tap o click (se queda hasta tocar otra
-  // jugada o la misma). En el celular un tap dispara `mouseenter`, `focus`, `click` y
-  // `mouseleave` en ese orden: sin `fijado`, el `mouseleave` del final cerraba la miniatura en el
-  // mismo gesto que la abria y no se veia nada.
-  const [mirando, setMirando] = useState<{ paso: PasoDeLinea; fijado: boolean } | null>(null);
+  // La jugada que se esta mirando, para la miniatura. La coordinacion (hover, foco y tap) vive
+  // en el hook compartido, que es el mismo que usa el entrenador.
+  const { mirando, propsDePaso } = useMiniBoardPopover();
 
   return (
     <div className="rounded-xl border border-borde bg-panel px-4 py-3.5">
@@ -164,17 +156,7 @@ export function EnginePanel({
                   <button
                     key={`${paso.san}-${i}`}
                     type="button"
-                    onMouseEnter={() => setMirando((v) => (v?.fijado ? v : { paso, fijado: false }))}
-                    onMouseLeave={() =>
-                      setMirando((v) => (v && !v.fijado && v.paso === paso ? null : v))
-                    }
-                    onFocus={() => setMirando((v) => (v?.fijado ? v : { paso, fijado: false }))}
-                    onBlur={() => setMirando((v) => (v && !v.fijado && v.paso === paso ? null : v))}
-                    onClick={() =>
-                      setMirando((v) =>
-                        v?.fijado && v.paso === paso ? null : { paso, fijado: true },
-                      )
-                    }
+                    {...propsDePaso(paso)}
                     /* Sin `uppercase`: en notacion de ajedrez la caja es significativa. */
                     className="rounded px-0.5 font-mono text-[12.5px] text-texto-suave transition-colors hover:bg-panel-alto hover:text-texto"
                   >
@@ -185,18 +167,7 @@ export function EnginePanel({
             </li>
           ))}
 
-          {mirando ? (
-            <div className="pointer-events-none absolute right-0 bottom-full z-20 mb-2 rounded-lg border border-borde bg-panel p-1.5 shadow-lg">
-              <MiniBoard
-                fen={mirando.paso.fen}
-                orientacion={orientacion}
-                resaltadas={[mirando.paso.desde, mirando.paso.hasta]}
-              />
-              <p className="mt-1 text-center font-mono text-[11px] text-tenue">
-                {mirando.paso.san}
-              </p>
-            </div>
-          ) : null}
+          <MiniBoardPopover paso={mirando} orientacion={orientacion} />
         </ol>
       )}
     </div>

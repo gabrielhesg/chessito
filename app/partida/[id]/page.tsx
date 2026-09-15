@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { gameDetail, openingNames } from '@/lib/data';
@@ -21,10 +22,26 @@ function mediana(valores: readonly number[]): number | null {
 }
 
 /** Tarjeta chica de la columna derecha: etiqueta en mono, numero grande. */
-function Mini({ etiqueta, valor, sufijo, tono }: { etiqueta: string; valor: string; sufijo?: string; tono?: 'critico' }) {
+function Mini({
+  etiqueta,
+  valor,
+  sufijo,
+  tono,
+  ayuda,
+}: {
+  etiqueta: string;
+  valor: string;
+  sufijo?: string;
+  tono?: 'critico';
+  /** Que significa el numero. Un numero grande en rojo sin nombre no se entiende y no se cree. */
+  ayuda?: ReactNode;
+}) {
   return (
     <div className="rounded-xl border border-borde bg-panel px-3.5 py-3">
-      <p className="eyebrow">{etiqueta}</p>
+      <p className="eyebrow inline-flex items-center">
+        {etiqueta}
+        {ayuda ? <Ayuda>{ayuda}</Ayuda> : null}
+      </p>
       <p className={`mt-1.5 text-[20px] font-semibold tabular-nums ${tono === 'critico' ? 'text-critico' : ''}`}>
         {valor}
         {sufijo ? <span className="ml-1 text-[12px] font-normal text-tenue">{sufijo}</span> : null}
@@ -83,6 +100,11 @@ export default async function PartidaPage({
   // Momentos clave, la idea de Game Review: donde se sale del libro, que error definio la
   // partida, y donde se fue el reloj. Todo derivado de `moves`, sin motor extra.
   const ultimaDeLibro = [...mias].reverse().find((m) => m.is_book);
+  // Quien se salio de la teoria NO es quien jugo la ultima de libro: es quien jugo la PRIMERA
+  // fuera de ella. Casi siempre es el rival, y decir "de ahi en adelante jugaste solo" sobre una
+  // jugada propia daba a entender lo contrario. La primera fuera de libro puede no existir
+  // (partida entera dentro del libro), y ahi no hay nadie a quien nombrar.
+  const primeraFueraDeLibro = moves.find((m) => !m.is_book);
   const peorJugada = mias
     .filter((m) => !m.is_book && !m.is_decided && m.cp_loss !== null)
     .sort((a, b) => (b.cp_loss ?? 0) - (a.cp_loss ?? 0))[0];
@@ -185,9 +207,18 @@ export default async function PartidaPage({
                 valor={ultimaDeLibro ? `jugada ${Math.ceil(ultimaDeLibro.ply / 2) + 1}` : '—'}
               />
               <Mini
-                etiqueta="Pérdida total"
+                etiqueta="Peones perdidos"
                 valor={analizada ? (perdidaTotal / 100).toFixed(1) : '—'}
                 tono={analizada ? 'critico' : undefined}
+                ayuda={
+                  <>
+                    Cuánto empeoró la posición sumando TUS jugadas, en peones. 100 centipeones
+                    equivalen a un peón; es el mismo ACPL de /errores, sumado en vez de promediado.
+                    No es material que perdiste de verdad: es lo que costó cada jugada frente a la
+                    que el motor habría hecho. Deja fuera las de libro y las posiciones ya
+                    decididas. Mientras más bajo, mejor.
+                  </>
+                }
               />
             </div>
           }
@@ -196,15 +227,23 @@ export default async function PartidaPage({
         {analizada ? (
           <Panel title="Momentos clave" subtitle="Lo que decidió la partida, en tres líneas">
             <ul className="space-y-2 text-sm">
-              {ultimaDeLibro ? (
+              {primeraFueraDeLibro ? (
                 <li className="flex flex-wrap items-center gap-2">
                   <Badge>libro</Badge>
                   <span>
-                    Tu última jugada de teoría fue{' '}
-                    <Link href={`?ply=${ultimaDeLibro.ply}`} className="font-mono text-acento hover:underline">
-                      {ultimaDeLibro.san}
+                    La teoría se acabó en{' '}
+                    <Link
+                      href={`?ply=${primeraFueraDeLibro.ply}`}
+                      className="font-mono text-acento hover:underline"
+                    >
+                      {primeraFueraDeLibro.san}
                     </Link>{' '}
-                    <span className="text-tenue">(ply {ultimaDeLibro.ply}). De ahí en adelante jugaste solo.</span>
+                    <span className="text-tenue">
+                      ({primeraFueraDeLibro.is_mine ? 'tuya' : 'de tu rival'}, jugada{' '}
+                      {Math.ceil(primeraFueraDeLibro.ply / 2)}): esa posición ya no está en el libro
+                      de aperturas. Salirse de la teoría no es un error — el motor puede seguir de
+                      acuerdo contigo.
+                    </span>
                   </span>
                 </li>
               ) : null}
