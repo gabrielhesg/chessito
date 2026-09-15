@@ -39,6 +39,13 @@ export default defineConfig({
         'lib/puzzles/store.ts',
         'lib/puzzles/run.ts',
         'lib/spaced-repetition/actions.ts',
+        // Mismo criterio: es un hook de React que orquesta un Web Worker con Stockfish dentro.
+        // Lo que hay que verificar de el (que la cancelacion no mezcle posiciones, que el .wasm
+        // caido no rompa la pagina) solo se ve manejando la app en un navegador de verdad, no
+        // con unitarios en memoria. El protocolo, la sesion y el transporte, que SI son
+        // testeables, estan aparte justamente para poder cubrirlos: protocol.ts, session.ts y
+        // worker-transport.ts estan al 100%.
+        'lib/engine/useBrowserEngine.ts',
       ],
       // Cuenta tambien los archivos que ningun test importa: si no, el umbral se mediria
       // sobre menos archivos de los que parece.
