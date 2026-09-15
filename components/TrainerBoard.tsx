@@ -11,11 +11,13 @@ import {
   diferenciaEnPeones,
   explicarBlunder,
   logroDeLaSolucion,
+  TEXTO_CONCEPTO,
   type Explicacion,
   type Linea,
   type PasoLinea,
 } from '@/lib/puzzles/explain';
 import { MiniBoardPopover, useMiniBoardPopover } from '@/components/MiniBoardPopover';
+import { diagnosticar, frasesDelDiagnostico, type Diagnostico } from '@/lib/puzzles/diagnostico';
 import { useBrowserEngine } from '@/lib/engine/useBrowserEngine';
 import { Badge, Button } from '@/components/ui';
 
@@ -137,6 +139,7 @@ function PanelExplicacion({
   orientacion,
   onIr,
   mirado,
+  diagnostico,
 }: {
   explicacion: Explicacion;
   puzzle: PuzzleUI;
@@ -148,11 +151,19 @@ function PanelExplicacion({
   onIr: (linea: 'refutacion' | 'solucion', indice: number, paso: PasoLinea) => void;
   /** Que jugada de que linea se esta mirando en el tablero grande. */
   mirado: { linea: 'refutacion' | 'solucion'; indice: number } | null;
+  /** El diagnostico del error, que es lo que convierte el panel en una explicacion. */
+  diagnostico: Diagnostico | null;
 }) {
-  const { refutacion, solucion, jugadaSan, mejorSan, concepto } = explicacion;
+  const { refutacion, solucion, jugadaSan, mejorSan } = explicacion;
   const material = refutacion?.materialPerdido ?? 0;
   const logro = logroDeLaSolucion(solucion);
   const diferencia = diferenciaEnPeones(puzzle.cpLoss);
+  // El concepto sale del diagnostico si lo hay: es el que mira la linea del rival en vez de
+  // adivinar sobre la estructura, y por eso deja de decir siempre lo mismo.
+  const concepto = diagnostico
+    ? { tipo: diagnostico.concepto, texto: TEXTO_CONCEPTO[diagnostico.concepto] }
+    : explicacion.concepto;
+  const frases = diagnostico ? frasesDelDiagnostico(diagnostico) : [];
 
   return (
     <div className="space-y-4 text-sm">
@@ -269,20 +280,28 @@ function PanelExplicacion({
         </div>
       ) : null}
 
-      {/* El contraste es la explicacion: no es "esta es mejor porque si", es cuanto separa a las
-          dos. Se dice como DIFERENCIA y no como dos evaluaciones porque `puzzles` guarda la
-          caida (`cp_loss`) y nunca guardo el valor absoluto de la posicion. */}
-      {diferencia > 0 ? (
-        <div className="rounded-xl border border-borde bg-panel px-4 py-3">
-          <p className="mb-1 font-mono text-[10.5px] font-medium uppercase tracking-[0.11em] text-tenue">
-            La diferencia
+      {/* Antes este recuadro daba un numero y nada mas. Un numero no ensena: lo que ensena es que
+          te hacia el rival, que te falto ver, y que conseguia la buena. Las tres frases salen de
+          `lib/puzzles/diagnostico.ts`, de hechos del tablero, ninguna inventada. El numero se
+          queda al pie porque es el unico dato calibrado que hay — y se dice como DIFERENCIA, no
+          como dos evaluaciones, porque `puzzles` guarda la caida y nunca el valor absoluto. */}
+      {frases.length > 0 ? (
+        <div className="rounded-xl border border-acento/25 bg-acento/[0.05] px-4 py-3.5">
+          <p className="mb-2 font-mono text-[10.5px] font-medium uppercase tracking-[0.11em] text-acento">
+            Lo que te diría tu entrenador
           </p>
-          <p className="text-[13.5px] leading-relaxed text-texto-suave">
-            Entre <span className="font-mono text-texto">{mejorSan}</span> y{' '}
-            <span className="font-mono text-texto">{jugadaSan}</span> hay{' '}
-            <strong className="text-texto">{diferencia.toFixed(1)}</strong> puntos de diferencia
-            según el motor. Un punto es lo que vale un peón.
-          </p>
+          <div className="space-y-2 text-[13.5px] leading-relaxed text-texto-suave">
+            {frases.map((frase, i) => (
+              <p key={i}>{frase}</p>
+            ))}
+          </div>
+          {diferencia > 0 ? (
+            <p className="mt-2.5 text-[11.5px] text-apagado">
+              Entre <span className="font-mono">{mejorSan}</span> y{' '}
+              <span className="font-mono">{jugadaSan}</span> hay {diferencia.toFixed(1)} puntos de
+              diferencia según el motor; un punto es lo que vale un peón.
+            </p>
+          ) : null}
         </div>
       ) : null}
 
@@ -315,7 +334,16 @@ function PanelExplicacion({
  * sin notificaciones). Reintentar y explicar son las dos cosas que hacen que el ejercicio ensene
  * algo en vez de solo puntuar.
  */
-export type PatronUI = { etiqueta: string; pct: number; titulo: string };
+export type PatronUI = {
+  etiqueta: string;
+  /** Cuantos intentos fallaste con ese concepto, y en cuantos ejercicios distintos. */
+  intentos: number;
+  ejercicios: number;
+  /** Largo de la barra respecto del concepto que mas repites. No es un porcentaje de acierto. */
+  pct: number;
+  /** La frase que explica el concepto. */
+  detalle: string;
+};
 
 export function TrainerBoard({
   puzzle,
@@ -393,6 +421,16 @@ export function TrainerBoard({
         uci === puzzle.playedUci && puzzle.refutationLine?.length
           ? describirLinea(fenDespuesDe(puzzle.fen, uci) ?? puzzle.fen, puzzle.refutationLine, false)
           : null;
+      // Primero el diagnostico sobre la linea del rival, que es el que nombra el error de verdad;
+      // si no alcanza (sin linea todavia), se cae al reconocedor estructural de siempre.
+      const delDiagnostico = diagnosticar({
+        fen: puzzle.fen,
+        playedUci: uci,
+        bestUci: puzzle.bestUci,
+        refutacion: linea,
+        cpLoss: puzzle.cpLoss,
+      })?.concepto;
+      if (delDiagnostico) return delDiagnostico;
       return (
         conceptoDelError({ fen: puzzle.fen, playedUci: uci, refutacion: linea, cpLoss: puzzle.cpLoss })
           ?.tipo ?? null
@@ -409,14 +447,23 @@ export function TrainerBoard({
   const esElErrorOriginal = jugadaAExplicar === puzzle.playedUci;
 
   /**
-   * Cuando la jugada probada NO es el blunder original, su refutacion no esta guardada: se la
-   * pide al motor del navegador. Solo se enciende al cerrar el ejercicio, para no gastar los
-   * 7 MB del motor mientras estas pensando.
+   * Cuando hay que pedirle la linea del castigo al motor del navegador. Son DOS casos, no uno:
+   *
+   *  - la jugada probada no es el blunder original, asi que su refutacion no esta guardada;
+   *  - o es el original pero el ejercicio no tiene `refutation_line` (el backfill de
+   *    `puzzles:enrich` todavia no lo alcanzo). Antes ese caso no encendia el motor y el panel
+   *    simplemente no mostraba la tabla — que es el "a veces aparece y a veces no".
+   *
+   * Un solo booleano con nombre porque lo usan la condicion del hook Y el estado que se muestra:
+   * separados, el panel decia "no se pudo calcular" mientras el motor todavia pensaba.
    */
+  const hacenFaltaElMotor = !esElErrorOriginal || !puzzle.refutationLine?.length;
+
+  /** Solo se enciende al cerrar el ejercicio, para no bajar el motor mientras estas pensando. */
   const motor = useBrowserEngine({
     fen: puzzle.fen,
     uciMoves: [jugadaAExplicar],
-    enabled: estado !== 'jugando' && !esElErrorOriginal,
+    enabled: estado !== 'jugando' && hacenFaltaElMotor,
     multiPv: 1,
     depth: 14,
   });
@@ -429,15 +476,27 @@ export function TrainerBoard({
         fen: puzzle.fen,
         playedUci: jugadaAExplicar,
         bestUci: puzzle.bestUci,
-        // La guardada solo sirve para el error original; para otra jugada, la del motor.
-        refutationLine: esElErrorOriginal ? puzzle.refutationLine : lineaDelMotor,
+        // La guardada solo sirve para el error original, y solo si existe; si no, la del motor.
+        refutationLine: hacenFaltaElMotor ? lineaDelMotor : puzzle.refutationLine,
         solutionLine: puzzle.solutionLine,
         cpLoss: puzzle.cpLoss,
       }),
-    [puzzle, jugadaAExplicar, esElErrorOriginal, lineaDelMotor],
+    [puzzle, jugadaAExplicar, hacenFaltaElMotor, lineaDelMotor],
   );
 
-  const estadoMotor: 'calculando' | 'listo' | 'sin-motor' = esElErrorOriginal
+  const diagnostico = useMemo(
+    () =>
+      diagnosticar({
+        fen: puzzle.fen,
+        playedUci: jugadaAExplicar,
+        bestUci: puzzle.bestUci,
+        refutacion: explicacion.refutacion,
+        cpLoss: puzzle.cpLoss,
+      }),
+    [puzzle.fen, puzzle.bestUci, puzzle.cpLoss, jugadaAExplicar, explicacion.refutacion],
+  );
+
+  const estadoMotor: 'calculando' | 'listo' | 'sin-motor' = !hacenFaltaElMotor
     ? 'listo'
     : motor.status === 'cargando' || motor.status === 'pensando'
       ? 'calculando'
@@ -607,6 +666,29 @@ export function TrainerBoard({
     [estado, game, solucion, paso, intentos, cerrar, puzzle.id, pistaUsada, conceptoDeJugada],
   );
 
+  /**
+   * Volver una jugada atras mientras resuelves. Faltaba: una jugada mala se deshace sola, pero
+   * una buena avanzaba la linea sin vuelta, y en un ejercicio de varias jugadas eso deja atrapado.
+   *
+   * Lo primero es CORTAR los temporizadores: la respuesta del rival entra por un `setTimeout` de
+   * 400 ms, y apretar Atras dentro de esa ventana deshacia una jugada que el temporizador estaba
+   * por hacer — despues disparaba sobre un tablero ya rebobinado. Es la misma `limpiarAnimacion`
+   * que se agrego en la Fase 10 para la animacion de la refutacion.
+   */
+  const retroceder = useCallback(() => {
+    if (estado !== 'jugando' || paso === 0) return;
+    limpiarAnimacion();
+    // Dos medias jugadas: la del rival y la tuya. Si por lo que sea no hay respuesta del rival
+    // que quitar, se deshace una sola en vez de rebobinar de mas.
+    game.undo();
+    if (paso >= 2 && game.history().length > 0) game.undo();
+    setPaso(Math.max(0, paso - 2));
+    setPosition(game.fen());
+    setVista(null);
+    setFlechas([]);
+    setAviso(null);
+  }, [estado, paso, game, limpiarAnimacion]);
+
   const pedirPista = useCallback(() => {
     const esperada = solucion[paso];
     if (!esperada) return;
@@ -674,6 +756,11 @@ export function TrainerBoard({
               <span className="text-xs text-tenue">
                 {intentos === 0 ? 'Primer intento' : `Intento ${intentos + 1}`}
               </span>
+              {paso > 0 && vista === null ? (
+                <Button variante="fantasma" onClick={retroceder}>
+                  ← Atrás
+                </Button>
+              ) : null}
               <Button variante="fantasma" onClick={pedirPista}>
                 Pista
               </Button>
@@ -689,6 +776,7 @@ export function TrainerBoard({
               puzzle={puzzle}
               estado={estado}
               estadoMotor={estadoMotor}
+              diagnostico={diagnostico}
               orientacion={orientacion}
               onIr={irAPaso}
               mirado={vista?.donde ?? null}
@@ -701,24 +789,32 @@ export function TrainerBoard({
 
         {patrones.length > 0 ? (
           <div className="mt-1.5 border-t border-borde pt-3.5">
-            <p className="eyebrow mb-2.5">En qué patrón tropiezas más</p>
-            <div className="flex flex-col gap-2 text-[12.5px]">
+            <p className="eyebrow mb-1">Los errores que más has repetido</p>
+            <p className="mb-2.5 text-[11.5px] text-apagado">
+              Cuenta tus intentos fallados de todo el historial, agrupados por el tipo de error. Un
+              error que ya corregiste sigue apareciendo: es tu historial, no un diagnóstico de hoy.
+            </p>
+            <div className="flex flex-col gap-2.5 text-[12.5px]">
               {patrones.map((p) => (
-                <div key={p.etiqueta} className="flex items-center gap-2.5" title={p.titulo}>
-                  <span className="w-[92px] shrink-0 text-texto-suave sm:w-[130px]">{p.etiqueta}</span>
-                  <span className="h-2 flex-1 overflow-hidden rounded-full bg-borde">
-                    <span
-                      className="block h-full rounded-full bg-acento"
-                      style={{ width: `${Math.max(2, Math.round(p.pct))}%` }}
-                    />
-                  </span>
-                  <span className="w-9 shrink-0 text-right font-mono text-apagado">{p.pct.toFixed(0)}%</span>
+                <div key={p.etiqueta}>
+                  <div className="flex items-center gap-2.5">
+                    <span className="min-w-0 flex-1 truncate text-texto-suave">{p.etiqueta}</span>
+                    <span className="h-2 w-16 shrink-0 overflow-hidden rounded-full bg-borde sm:w-24">
+                      <span
+                        className="block h-full rounded-full bg-acento"
+                        style={{ width: `${Math.max(6, Math.round(p.pct))}%` }}
+                      />
+                    </span>
+                    <span className="w-24 shrink-0 text-right font-mono text-[11px] text-apagado">
+                      {p.intentos} {p.intentos === 1 ? 'vez' : 'veces'}
+                    </span>
+                  </div>
+                  {p.detalle ? (
+                    <p className="mt-0.5 text-[11.5px] leading-relaxed text-apagado">{p.detalle}</p>
+                  ) : null}
                 </div>
               ))}
             </div>
-            <p className="mt-2.5 text-[11.5px] text-apagado">
-              Aciertos al primer intento, sin pista. Los peores primero.
-            </p>
           </div>
         ) : null}
       </div>
