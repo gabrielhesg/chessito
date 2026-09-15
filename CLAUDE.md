@@ -59,6 +59,14 @@ No corre en Vercel (300 s de tope, cron una vez al día), ni en Supabase (2 s de
 invocación y un isolate de Deno no puede lanzar un binario), ni en el navegador (10 veces más
 lento y exige pestaña abierta durante horas). Razones y números en `docs/ANALYSIS-SPEC.md`.
 
+**Eso es el análisis POR LOTES. Desde la Fase 8 hay un segundo motor, en el navegador, para el
+análisis INTERACTIVO** (`lib/engine/useBrowserEngine.ts`): las tres mejores líneas de la posición
+que estás mirando en `/partida/[id]`, y la refutación de una jugada que acabas de probar en el
+entrenador. Son dos cargas distintas y el párrafo de arriba solo habla de la primera: analizar
+10.000 partidas exige horas con la pestaña abierta, analizar la posición que tienes en pantalla
+no. Los dos motores comparten el protocolo UCI (`lib/engine/protocol.ts` y `session.ts`) y solo
+se diferencian en el transporte, igual que `lib/ingest/store.ts` con sus dos implementaciones.
+
 El mismo script `pnpm analyze` corre igual en un computador si se quiere ir más rápido. Lee sus
 credenciales de `process.env` y no le importa si vienen de un secret de GitHub o de `.env.local`.
 
@@ -91,11 +99,14 @@ una métrica nueva, primero se agrega la vista a `supabase/migrations/`. Las der
 fila (clasificar una jugada, calcular el tiempo de una jugada) sí van en el script que escribe
 esa fila.
 
-**Ninguna variable lleva `NEXT_PUBLIC_`.** La app no tiene un solo componente cliente, así que
-ningún valor necesita viajar al navegador, ni siquiera la URL y la anon key de Supabase: se
+**Ninguna variable lleva `NEXT_PUBLIC_`.** Ningún valor de configuración necesita viajar al
+navegador, ni siquiera la URL y la anon key de Supabase: se
 llaman `SUPABASE_URL` y `SUPABASE_ANON_KEY` a secas (los nombres con prefijo se siguen aceptando
 como respaldo, ver `lib/env.ts`). Vercel además se niega a guardar como secreto una variable con
 ese prefijo, porque el prefijo significa lo contrario.
+
+(La app sí tiene componentes cliente desde la Fase 4 — el entrenador, la revisión de partida —
+pero ninguno necesita una variable de entorno: la ruta del motor WASM es un literal.)
 
 Y la service role key menos que ninguna: el cliente admin vive en `lib/supabase/admin.ts` y su
 primera línea es `import 'server-only'`, para que el build falle si alguien lo importa desde un
@@ -675,6 +686,87 @@ sin ejercicio no hay pagina y un 500 con el error real es mas util que una panta
 tarjetas de resumen de `/partida` apiladas en una columna bajo `sm`, la etiqueta de patrón del
 entrenador más angosta en celular, y el pie del gráfico de evaluación, que decía "1 errores graves
 marcados" y repetía la leyenda "Blancas arriba · negras abajo" que ya estaba sobre el gráfico.
+
+## Estado al terminar la Fase 8
+
+`/partida/[id]` dejo de ser una pantalla para mirar y paso a ser un tablero de analisis, y el
+entrenador dejo de solo puntuar. Una migracion nueva (`0009_conceptos.sql`) y un motor nuevo, el
+del navegador.
+
+| Pieza | Donde |
+|---|---|
+| Protocolo UCI, puro | `lib/engine/protocol.ts` |
+| Logica UCI sobre un transporte cualquiera | `lib/engine/session.ts` |
+| Los dos transportes | `lib/engine/node-transport.ts` y `worker-transport.ts` |
+| Stockfish WASM en el navegador | `lib/engine/useBrowserEngine.ts`, `public/stockfish/` |
+| Arbol de variaciones, puro y testeado | `lib/chess/tree.ts` |
+| Lista de jugadas con variaciones | `components/MoveList.tsx` |
+| Barra de ventaja | `components/BarraVentaja.tsx` |
+| Curvas del grafico | `caminoCurva`/`caminoAreaCurva` en `lib/charts/path.ts` |
+| Relojes por ply | `relojesEnPly` en `lib/chess/clock.ts` |
+| El concepto del error | `conceptoDelError` en `lib/puzzles/explain.ts` |
+
+**El motor del navegador no rompe la regla, la precisa.** Ver la seccion de reglas: el analisis
+por lotes sigue en Actions, el interactivo vive en el navegador. `lib/engine/uci.ts` quedo como
+fachada de Node y su API publica no cambio, asi que `scripts/analyze.ts`, `scripts/build-puzzles.ts`
+y `tests/uci.test.ts` no se tocaron — que los 14 tests del motor pasaran sin modificarlos ES la
+prueba de que la refactorizacion no cambio comportamiento.
+
+**El binario va commiteado en `public/stockfish/`, no instalado.** El paquete de npm pesa 168 MB
+porque trae todos los builds; se usan 7,3 MB del `lite-single`. Ese build NO necesita los headers
+COOP/COEP — verificado sobre el archivo: cero ocurrencias de `SharedArrayBuffer`. El multi-hilo
+obligaria a aislar el sitio entero y, sin los headers, cae a un hilo *en silencio*. Va con su
+`Copying.txt`, que es lo que la GPL-3 pide al servir el binario.
+
+**`middleware.ts` excluye `/stockfish`.** Sin esa excepcion el Web Worker recibe el HTML de
+`/entrar` en vez del motor y falla con un error que no dice nada. Si agregas otro asset que cargue
+un worker, va al mismo lookahead.
+
+**La cancelacion es lo unico verdaderamente dificil del motor interactivo.** Al cambiar de
+posicion no basta con mandar `stop`: hay que esperar el `bestmove` de la busqueda abortada antes
+de mandar la siguiente, o los `info` viejos se mezclan con los nuevos y la pantalla muestra lineas
+de otra posicion. Por eso `SearchHandle` separa `stop()` de `terminada`, y el hook serializa: una
+busqueda a la vez, y las posiciones intermedias se pisan en vez de encolarse. Hay un test que
+prueba que `terminada` NO resuelve hasta el `bestmove`.
+
+**`childIds[0]` es la continuacion y `childIds[1..]` son variaciones.** Con eso "linea principal"
+sale gratis y coincide con como el PGN representa las variantes. Dos reglas del arbol que se
+olvidan: agregar **deduplica** (re-jugar la jugada que ya esta navega a ella, no crea un hermano
+identico) y borrar **rechaza la linea principal** (la partida jugada es un hecho, no una edicion).
+
+**Dentro de una variacion, `datos` es null y no se dibuja nada derivado de `moves`.** La
+clasificacion, el `cp_loss` y el link a entrenar salen de la tabla `moves`, que solo tiene las
+jugadas que si ocurrieron. Ni vacios ni inventados: ahi la evaluacion la da el motor del navegador.
+
+**El entrenador explica la jugada que TU probaste, no solo el error de la partida.** Si probaste
+otra jugada mala, su refutacion no esta guardada en ningun lado: se la pide al motor del navegador
+(`multiPv: 1`, `depth: 14`), que se enciende solo al cerrar el ejercicio. Con eso desaparecio el
+mensaje de "todavia no tiene la linea de refutacion guardada".
+
+**`puzzle_attempts.concepto` no es lo mismo que `puzzles.theme`.** `theme` describe el error
+ORIGINAL de la partida; `concepto` describe la jugada que se probo en el ejercicio, que puede ser
+otra. Es la diferencia entre "este ejercicio es de pieza colgada" y "TU acabas de colgar una
+pieza". La vista `v_conceptos_fallados` cuenta INTENTOS, no ejercicios: si el mismo error se
+repite en cinco ejercicios distintos, eso es justo lo que hay que ver.
+
+**Sin limite de intentos, y SM-2 sigue honesto.** Se prueba hasta resolver. La repeticion
+espaciada no se ablanda porque califica por acierto al PRIMER intento sin pista, asi que insistir
+no adelanta la proxima aparicion.
+
+**`caminoLinea` no se toco.** Las curvas son funciones nuevas porque `Sparkline` depende de la
+forma actual de `caminoLinea`. Y `limiteY` en las curvas no es decorativo: una Catmull-Rom
+sobrepasa el rango al pasar por un pico, y un mate seguido de una posicion igualada es ese caso.
+
+**Verificado manejando la app, a 1280px y a 400px.** Arrastrar una pieza crea la variacion y
+aparece entre parentesis; el motor carga y su primera linea coincidia con la continuacion real de
+la partida; volando por 12 posiciones con las flechas el motor termina respondiendo sobre la
+posicion en pantalla y no sobre ninguna intermedia; y con la descarga del `.wasm` bloqueada la
+pagina sigue mostrando la partida y avisa. Cero errores de consola en las cuatro pruebas.
+
+**Lo que NO esta hecho y no es un olvido.** Promover una variacion a linea principal y exportar a
+PGN (el modelo de `childIds[0]` los deja cerca). Persistir el arbol: vive mientras dure la vista.
+Y el backfill de `puzzles:enrich` se dispara despues de mergear, como se hizo con `moves` y
+`analyze` — aunque ahora, si falta, el motor del navegador cubre el hueco.
 
 ## Convenciones
 

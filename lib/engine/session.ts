@@ -123,8 +123,14 @@ export class UciSession {
     await this.readUntil((line) => line === 'readyok');
   }
 
-  private posicion(uciMoves: readonly string[]): string {
-    return uciMoves.length > 0 ? `position startpos moves ${uciMoves.join(' ')}` : 'position startpos';
+  /**
+   * `position startpos` cuando se parte del inicio, `position fen <FEN>` cuando se parte de una
+   * posicion suelta — que es el caso del entrenador: un ejercicio guarda su FEN, no el camino
+   * completo desde la jugada 1.
+   */
+  private posicion(uciMoves: readonly string[], fromFen?: string): string {
+    const base = fromFen ? `position fen ${fromFen}` : 'position startpos';
+    return uciMoves.length > 0 ? `${base} moves ${uciMoves.join(' ')}` : base;
   }
 
   /**
@@ -204,6 +210,8 @@ export class UciSession {
       depth: number;
       multiPv: number;
       onUpdate: (lines: readonly EvalLine[], depth: number) => void;
+      /** Posicion de partida. Sin esto se asume la inicial. */
+      fromFen?: string;
     },
   ): SearchHandle {
     const byRank = new Map<number, EvalLine>();
@@ -243,7 +251,7 @@ export class UciSession {
     };
 
     this.send(`setoption name MultiPV value ${opciones.multiPv}`);
-    this.send(this.posicion(uciMoves));
+    this.send(this.posicion(uciMoves, opciones.fromFen));
     this.send(`go depth ${opciones.depth}`);
 
     const finPromesa = new Promise<void>((resolve) => {

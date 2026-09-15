@@ -55,12 +55,15 @@ export type BrowserEngine = {
  */
 export function useBrowserEngine({
   uciMoves,
+  fen,
   enabled,
   multiPv = 3,
   depth = 18,
 }: {
-  /** Jugadas desde la posicion inicial hasta la posicion a analizar. */
+  /** Jugadas hasta la posicion a analizar, desde `fen` si se da, o desde la inicial si no. */
   uciMoves: readonly string[];
+  /** Posicion de partida. El entrenador la necesita: un ejercicio guarda su FEN, no el camino. */
+  fen?: string;
   enabled: boolean;
   multiPv?: number;
   depth?: number;
@@ -81,8 +84,8 @@ export function useBrowserEngine({
   const sesionRef = useRef<UciSession | null>(null);
   /** La busqueda en curso, para poder pedirle que corte. */
   const enCursoRef = useRef<{ stop: () => void } | null>(null);
-  /** La ultima posicion pedida. Las intermedias se pisan: no hay cola. */
-  const pendienteRef = useRef<readonly string[] | null>(null);
+  /** La ultima posicion pedida (jugadas + FEN de partida). Las intermedias se pisan: no hay cola. */
+  const pendienteRef = useRef<{ moves: readonly string[]; fen?: string } | null>(null);
   /** Evita que dos bucles corran a la vez. */
   const bucleActivoRef = useRef(false);
   /** Descarta respuestas de una busqueda vieja (cinturon, ademas de los tirantes del bucle). */
@@ -94,7 +97,7 @@ export function useBrowserEngine({
     bucleActivoRef.current = true;
     try {
       while (pendienteRef.current && vivoRef.current) {
-        const posicion = pendienteRef.current;
+        const { moves, fen: desdeFen } = pendienteRef.current;
         pendienteRef.current = null;
         const sesion = sesionRef.current;
         if (!sesion) break;
@@ -104,9 +107,10 @@ export function useBrowserEngine({
         setProfundidad(0);
         setMotor('pensando');
 
-        const handle = sesion.searchStreaming(posicion, {
+        const handle = sesion.searchStreaming(moves, {
           depth,
           multiPv,
+          fromFen: desdeFen,
           onUpdate: (nuevas, alcanzada) => {
             if (token !== tokenRef.current || !vivoRef.current) return;
             setLines(nuevas);
@@ -125,8 +129,8 @@ export function useBrowserEngine({
   }, [depth, multiPv]);
 
   const pedir = useCallback(
-    (posicion: readonly string[]) => {
-      pendienteRef.current = posicion;
+    (pendiente: { moves: readonly string[]; fen?: string }) => {
+      pendienteRef.current = pendiente;
       // Cortar la busqueda en curso; el bucle recoge la pendiente cuando el motor confirme.
       enCursoRef.current?.stop();
       void correrBucle();
@@ -187,11 +191,14 @@ export function useBrowserEngine({
   }, [enabled, soportado]);
 
   // Cambio de posicion. El debounce ahorra trabajo; lo que garantiza correccion es el bucle.
-  const clave = uciMoves.join(' ');
+  const clave = `${fen ?? ''}|${uciMoves.join(' ')}`;
   const listoParaBuscar = motor === 'listo' || motor === 'pensando';
   useEffect(() => {
     if (!listoParaBuscar) return;
-    const id = setTimeout(() => pedir(clave === '' ? [] : clave.split(' ')), 200);
+    const id = setTimeout(() => {
+      const [desdeFen = '', movidas = ''] = clave.split('|');
+      pedir({ moves: movidas === '' ? [] : movidas.split(' '), fen: desdeFen || undefined });
+    }, 200);
     return () => clearTimeout(id);
   }, [clave, listoParaBuscar, pedir]);
 

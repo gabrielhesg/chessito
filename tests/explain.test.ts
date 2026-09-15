@@ -125,3 +125,51 @@ describe('explicarBlunder', () => {
     expect(exp.refutacion).toBeNull();
   });
 });
+
+describe('conceptoDelError', () => {
+  it('un mate forzado se nombra como mate, por encima de cualquier patrón', () => {
+    const exp = explicarBlunder({
+      fen: FEN_PASTOR,
+      playedUci: 'g8f6',
+      bestUci: 'd8e7',
+      refutationLine: ['h5f7'],
+      cpLoss: 10000,
+    });
+    expect(exp.concepto?.tipo).toBe('permite_mate');
+    expect(exp.concepto?.texto).toContain('mate');
+  });
+
+  it('sin patrón ni material, una caída grande se nombra igual en vez de callar', () => {
+    const exp = explicarBlunder({
+      fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      playedUci: 'a2a4',
+      bestUci: 'e2e4',
+      refutationLine: ['e7e5'],
+      cpLoss: 150,
+    });
+    expect(exp.concepto?.tipo).toBe('empeora_la_posicion');
+  });
+
+  it('una jugada que casi no cuesta nada no inventa un concepto', () => {
+    const exp = explicarBlunder({
+      fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      playedUci: 'e2e4',
+      bestUci: 'd2d4',
+      refutationLine: ['e7e5'],
+      cpLoss: 15,
+    });
+    expect(exp.concepto).toBeNull();
+  });
+
+  it('cada concepto trae su frase en español, no solo una etiqueta', () => {
+    const exp = explicarBlunder({
+      fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      playedUci: 'a2a4',
+      bestUci: 'e2e4',
+      refutationLine: ['e7e5'],
+      cpLoss: 150,
+    });
+    expect(exp.concepto?.texto.length).toBeGreaterThan(20);
+    expect(exp.concepto?.texto).toMatch(/[a-záéíóú]/);
+  });
+});

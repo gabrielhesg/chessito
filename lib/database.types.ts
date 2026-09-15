@@ -287,6 +287,7 @@ export type Database = {
           played_uci: string | null
           attempt_no: number
           hint_used: boolean
+          concepto: string | null
         }
         Insert: {
           id?: number
@@ -297,6 +298,7 @@ export type Database = {
           played_uci?: string | null
           attempt_no?: number
           hint_used?: boolean
+          concepto?: string | null
         }
         Update: {
           id?: number
@@ -307,6 +309,7 @@ export type Database = {
           played_uci?: string | null
           attempt_no?: number
           hint_used?: boolean
+          concepto?: string | null
         }
         Relationships: [
           {

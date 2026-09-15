@@ -23,6 +23,12 @@ export type Intento = {
   /** 1 para el primer intento del ejercicio en esta sesion, 2 para el segundo, etc. */
   attemptNo: number;
   hintUsed: boolean;
+  /**
+   * En que concepto se fallo, derivado de la jugada REALMENTE probada. null si acerto o si la
+   * jugada no fue lo bastante mala. Es lo que despues permite servir otro ejercicio del mismo
+   * concepto, en vez de repetir la misma posicion hasta memorizarla.
+   */
+  concepto?: string | null;
 };
 
 /**
@@ -41,6 +47,7 @@ export async function recordAttempt(intento: Intento & { cierra: boolean }): Pro
     played_uci: intento.playedUci,
     attempt_no: intento.attemptNo,
     hint_used: intento.hintUsed,
+    concepto: intento.concepto ?? null,
   });
   if (attemptError) {
     log.error('No se pudo registrar el intento', { puzzleId: intento.puzzleId, error: attemptError.message });
