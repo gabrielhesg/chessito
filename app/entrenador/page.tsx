@@ -1,5 +1,5 @@
 import { dueCount, nextDuePuzzle, puzzleAt, puzzleStatsByTheme, sessionToday } from '@/lib/data';
-import { EmptyState, Pagina } from '@/components/ui';
+import { Ayuda, EmptyState, Pagina } from '@/components/ui';
 import { TrainerBoard } from '@/components/TrainerBoard';
 
 export const dynamic = 'force-dynamic';
@@ -10,7 +10,7 @@ const NOMBRE_THEME: Record<string, string> = {
   permite_horquilla: 'Permite horquilla',
 };
 
-/** Cuantos puntos de progreso se dibujan: los de hoy, mas los que quedan, con tope. */
+/** Cuantos puntos de progreso se dibujan como maximo: los de hoy, mas los que quedan. */
 const PUNTOS_SESION = 8;
 
 /**
@@ -78,31 +78,43 @@ export default async function EntrenadorPage({
       subtitulo={
         <>
           Tus propios blunders, servidos como ejercicios. La jugada correcta es la que el motor
-          jugaba en tu lugar. Tienes tres intentos: si fallas, se juega en el tablero la línea con
-          la que tu rival te castigaba.
+          jugaba en tu lugar. Prueba las veces que necesites: al resolver verás por qué esa era la
+          mejor, y por qué la tuya perdía.
         </>
       }
       actions={
-        <div className="min-w-[190px] text-right">
-          <p className="eyebrow">Sesión de hoy</p>
-          <p className="mt-1.5 text-[20px] font-semibold tabular-nums">
-            {sesion.length}
-            <span className="text-[14px] font-normal text-apagado"> / {total || '—'}</span>
-          </p>
-          <div className="mt-2 flex justify-end gap-1">
-            {Array.from({ length: total }, (_, i) => {
-              const hecho = sesion[i];
-              return (
-                <span
-                  key={i}
-                  className={`h-1 w-5 rounded-full ${
-                    hecho === undefined ? 'bg-borde' : hecho.correct ? 'bg-bien' : 'bg-critico'
-                  }`}
-                />
-              );
-            })}
+        // Sin nada resuelto hoy, un "0 / 8" sin contexto no informa: no se dibuja. Aparece
+        // recien cuando hay algo que contar.
+        sesion.length > 0 ? (
+          <div className="min-w-[190px] text-right">
+            <p className="eyebrow">
+              Resueltos hoy
+              <Ayuda>
+                Ejercicios que cerraste hoy. Verde es resuelto al primer intento y sin pista, que
+                es el mismo criterio con el que la repetición espaciada decide cuándo volver a
+                mostrártelo; rojo es que necesitaste más de un intento. La meta de {PUNTOS_SESION}{' '}
+                es una referencia, no una obligación.
+              </Ayuda>
+            </p>
+            <p className="mt-1.5 text-[20px] font-semibold tabular-nums">
+              {sesion.filter((e) => e.correct).length}
+              <span className="text-[14px] font-normal text-apagado"> / {total}</span>
+            </p>
+            <div className="mt-2 flex justify-end gap-1">
+              {Array.from({ length: total }, (_, i) => {
+                const hecho = sesion[i];
+                return (
+                  <span
+                    key={i}
+                    className={`h-1 w-5 rounded-full ${
+                      hecho === undefined ? 'bg-borde' : hecho.correct ? 'bg-bien' : 'bg-critico'
+                    }`}
+                  />
+                );
+              })}
+            </div>
           </div>
-        </div>
+        ) : null
       }
     >
       {puzzle ? (

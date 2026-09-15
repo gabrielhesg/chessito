@@ -1,10 +1,29 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useState, type ReactNode } from 'react';
 import { Chess } from 'chess.js';
 import { Chessboard } from 'react-chessboard';
 import { EvalChart, type PuntoEval } from '@/components/charts/EvalChart';
-import { Badge, Clasificacion, cpAPeones } from '@/components/ui';
+import { Badge, Button, Clasificacion, cpAPeones } from '@/components/ui';
+import { BarraVentaja } from '@/components/BarraVentaja';
+import { EnginePanel } from '@/components/EnginePanel';
+import { MoveList } from '@/components/MoveList';
+import { formatClock, relojesEnPly } from '@/lib/chess/clock';
+import { useBrowserEngine } from '@/lib/engine/useBrowserEngine';
+import {
+  addMove,
+  anterior,
+  buildFromMainLine,
+  deleteSubtree,
+  finDeLinea,
+  isMainLine,
+  mainLine,
+  nearestMainLine,
+  siguiente,
+  uciPath,
+  type MoveTree,
+  type NodeId,
+} from '@/lib/chess/tree';
 
 export type JugadaUI = {
   ply: number;
@@ -26,24 +45,111 @@ function segundos(ms: number | null): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
-function reloj(ms: number | null): string {
-  if (ms === null) return '';
-  const total = Math.max(0, Math.round(ms / 1000));
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+/**
+ * `moves.best_uci` se guarda en UCI, que es lo que habla el motor, pero "c3d4" no se lee: un
+ * ajedrecista lee "cxd4". Se traduce desde la posicion ANTERIOR a la jugada. Si la jugada no es
+ * legal ahi (dato viejo de otra version del motor), se muestra el UCI crudo antes que nada.
+ */
+function mejorEnSan(fenAntes: string | undefined, bestUci: string | null): string | null {
+  if (!bestUci) return null;
+  if (!fenAntes) return bestUci;
+  try {
+    const tablero = new Chess(fenAntes);
+    return tablero.move({
+      from: bestUci.slice(0, 2),
+      to: bestUci.slice(2, 4),
+      promotion: bestUci.length > 4 ? bestUci.slice(4) : undefined,
+    }).san;
+  } catch {
+    return bestUci;
+  }
 }
 
-/** "12." para una jugada de blancas, "12..." para una de negras, como en cualquier visor. */
+/**
+ * El tablero es cuadrado y ocupa el ancho de su columna; la barra de ventaja tiene que medir lo
+ * mismo. Es un valor fijo porque `react-chessboard` no expone su alto renderizado, y la columna
+ * esta acotada a 520px por el grid.
+ */
+const ALTO_TABLERO = 476;
+
+/** "12." para una jugada de blancas, "12..." para una de negras. */
 function numeroDe(ply: number): string {
   return `${Math.ceil(ply / 2)}${ply % 2 === 1 ? '.' : '...'}`;
 }
 
+/** Un reloj, con el nombre del jugador. El del que va a mover va resaltado. */
+function Reloj({ nombre, ms, activo }: { nombre: string; ms: number | null; activo: boolean }) {
+  return (
+    <div className="flex items-baseline justify-between gap-2 py-1.5">
+      <span className="truncate text-[13px] text-texto-suave">{nombre}</span>
+      <span
+        className={`rounded-md px-2 py-0.5 font-mono text-[14px] font-medium tabular-nums ${
+          activo ? 'bg-panel-alto text-texto' : 'text-tenue'
+        }`}
+      >
+        {formatClock(ms)}
+      </span>
+    </div>
+  );
+}
+
+type Estado = { tree: MoveTree<JugadaUI>; cursorId: NodeId };
+
+type Accion =
+  | { tipo: 'ir'; id: NodeId }
+  | { tipo: 'siguiente' }
+  | { tipo: 'anterior' }
+  | { tipo: 'inicio' }
+  | { tipo: 'fin' }
+  | { tipo: 'jugar'; from: string; to: string; promotion?: string }
+  | { tipo: 'borrar'; id: NodeId };
+
 /**
- * Revision de una partida: tablero navegable + lista de jugadas + grafico de evaluacion, los tres
- * sincronizados por el ply actual. Es la pantalla que Chess.com llama Game Review y que esta app
- * no tenia: /registro listaba 10.000 partidas y el unico link disponible era hacia chess.com.
+ * Despachador corto a proposito: toda la logica del arbol vive en `lib/chess/tree.ts`, que esta
+ * testeado aparte. Aca solo se traduce una accion de la UI a una llamada.
+ */
+function reducer(estado: Estado, accion: Accion): Estado {
+  const { tree, cursorId } = estado;
+  switch (accion.tipo) {
+    case 'ir':
+      return tree.nodes[accion.id] ? { tree, cursorId: accion.id } : estado;
+    case 'siguiente':
+      return { tree, cursorId: siguiente(tree, cursorId) };
+    case 'anterior':
+      return { tree, cursorId: anterior(tree, cursorId) };
+    case 'inicio':
+      return { tree, cursorId: tree.rootId };
+    case 'fin':
+      return { tree, cursorId: finDeLinea(tree, cursorId) };
+    case 'jugar': {
+      const res = addMove(tree, cursorId, {
+        from: accion.from,
+        to: accion.to,
+        promotion: accion.promotion,
+      });
+      // Jugada ilegal: el estado no cambia y el tablero devuelve la pieza a su casilla.
+      return res ? { tree: res.tree, cursorId: res.nodeId } : estado;
+    }
+    case 'borrar': {
+      const res = deleteSubtree(tree, accion.id);
+      return res ? { tree: res.tree, cursorId: res.cursorId } : estado;
+    }
+  }
+}
+
+/**
+ * Revision de una partida: tablero, evaluacion, relojes y lista de jugadas, los cuatro
+ * sincronizados por la posicion actual.
  *
- * Los FEN de cada ply se calculan aca, una sola vez, reproduciendo las jugadas con chess.js. El
- * esquema no los guarda a proposito y no hace falta que lo haga.
+ * Desde la Fase 8 el estado NO es un numero de ply sino un cursor sobre un arbol
+ * (`lib/chess/tree.ts`): la linea principal es la partida real y de cualquier jugada pueden
+ * colgar variaciones. Mover una pieza — de cualquier bando — crea una variacion en vez de estar
+ * prohibido, que es lo que convierte esta pantalla en un tablero de analisis.
+ *
+ * Lo que NO existe dentro de una variacion: la clasificacion, el `cp_loss` y el link a entrenar
+ * salen de la tabla `moves`, que solo tiene las jugadas que si ocurrieron. Ahi `datos` es null y
+ * esos bloques no se dibujan — ni vacios ni inventados. La evaluacion de una variacion la da el
+ * motor del navegador.
  */
 export function GameReview({
   jugadas,
@@ -51,6 +157,9 @@ export function GameReview({
   plyInicial,
   resumen,
   gameId,
+  baseSeconds,
+  jugadorBlancas,
+  jugadorNegras,
 }: {
   jugadas: readonly JugadaUI[];
   orientacion: 'white' | 'black';
@@ -59,123 +168,162 @@ export function GameReview({
   resumen?: ReactNode;
   /** Para el link a entrenar la posicion, que solo aparece sobre un error tuyo. */
   gameId: number;
+  /** Tiempo base del control de tiempo, para el reloj de quien todavia no ha movido. */
+  baseSeconds: number;
+  jugadorBlancas: string;
+  jugadorNegras: string;
 }) {
-  const [ply, setPly] = useState(plyInicial);
+  const inicial = useMemo<Estado>(() => {
+    const tree = buildFromMainLine<JugadaUI>(
+      jugadas.map((j) => ({ san: j.san, uci: j.uci, datos: j })),
+    );
+    // `?ply=N` de los links de "Momentos clave" se resuelve a un nodo. Antes esto solo se leia
+    // al montar y el link no re-sincronizaba; ahora el cursor es el unico estado de posicion.
+    const destino = mainLine(tree)[plyInicial - 1];
+    return { tree, cursorId: destino?.id ?? tree.rootId };
+  }, [jugadas, plyInicial]);
 
-  const fens = useMemo(() => {
-    const chess = new Chess();
-    const lista = [chess.fen()]; // indice 0 = posicion inicial
-    for (const j of jugadas) {
-      try {
-        chess.move(j.san);
-      } catch {
-        break;
-      }
-      lista.push(chess.fen());
-    }
-    return lista;
-  }, [jugadas]);
+  const [{ tree, cursorId }, despachar] = useReducer(reducer, inicial);
+  const [motorEncendido, setMotorEncendido] = useState(false);
 
-  const maxPly = fens.length - 1;
-  const plyAcotado = Math.max(0, Math.min(maxPly, ply));
-  const jugadaActual = jugadas[plyAcotado - 1];
+  const nodo = tree.nodes[cursorId];
+  const datos = nodo?.datos ?? null;
+  const enPrincipal = isMainLine(tree, cursorId);
+  const fenActual = nodo?.fen ?? '';
+  const plyActual = nodo?.ply ?? 0;
 
-  const ir = useCallback((destino: number) => setPly(Math.max(0, Math.min(maxPly, destino))), [maxPly]);
+  const caminoUci = useMemo(() => uciPath(tree, cursorId), [tree, cursorId]);
+  const motor = useBrowserEngine({ uciMoves: caminoUci, enabled: motorEncendido });
 
-  // La lista sigue a la jugada actual. Sin esto, saltar al ply 30 desde el grafico deja la lista
-  // mostrando la jugada 1 y hay que buscar a mano donde estas.
-  const listaRef = useRef<HTMLOListElement>(null);
-  useEffect(() => {
-    const fila = listaRef.current?.querySelector(`[data-ply="${plyAcotado}"]`);
-    fila?.scrollIntoView({ block: 'nearest' });
-  }, [plyAcotado]);
+  const ir = useCallback((id: NodeId) => despachar({ tipo: 'ir', id }), []);
 
   // Flechas del teclado, que es como se navega una partida en cualquier visor de ajedrez.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft') ir(plyAcotado - 1);
-      else if (e.key === 'ArrowRight') ir(plyAcotado + 1);
-      else if (e.key === 'Home') ir(0);
-      else if (e.key === 'End') ir(maxPly);
+      if (e.key === 'ArrowLeft') despachar({ tipo: 'anterior' });
+      else if (e.key === 'ArrowRight') despachar({ tipo: 'siguiente' });
+      else if (e.key === 'Home') despachar({ tipo: 'inicio' });
+      else if (e.key === 'End') despachar({ tipo: 'fin' });
       else return;
       e.preventDefault();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [ir, plyAcotado, maxPly]);
+  }, []);
 
-  // La lista va a dos columnas, como cualquier planilla de ajedrez: una fila por numero de
-  // jugada, con la de blancas y la de negras al lado. En una sola columna, una partida de 43
-  // jugadas son 86 filas y hay que hacer scroll el doble para encontrar nada.
-  const filas = useMemo(() => {
-    const porNumero = new Map<number, { numero: number; blancas?: JugadaUI; negras?: JugadaUI }>();
-    for (const j of jugadas) {
-      const numero = Math.ceil(j.ply / 2);
-      const fila = porNumero.get(numero) ?? { numero };
-      if (j.ply % 2 === 1) fila.blancas = j;
-      else fila.negras = j;
-      porNumero.set(numero, fila);
-    }
-    return [...porNumero.values()];
-  }, [jugadas]);
+  const principal = useMemo(() => mainLine(tree), [tree]);
 
-  const puntosEval: PuntoEval[] = jugadas.map((j) => ({
-    ply: j.ply,
-    evalCp: j.evalCp,
-    classification: j.classification,
-    isMine: j.isMine,
-    san: j.san,
-  }));
+  const puntosEval: PuntoEval[] = useMemo(
+    () =>
+      principal.map((n) => ({
+        ply: n.ply,
+        evalCp: n.datos?.evalCp ?? null,
+        classification: n.datos?.classification ?? null,
+        isMine: n.datos?.isMine ?? false,
+        san: n.san,
+      })),
+    [principal],
+  );
 
-  const flechas = jugadaActual
+  /** El grafico dibuja la partida real: dentro de una variacion se marca de donde colgo. */
+  const plyEnGrafico = tree.nodes[nearestMainLine(tree, cursorId)]?.ply ?? 0;
+
+  const irAPlyDelGrafico = useCallback(
+    (ply: number) => {
+      const destino = mainLine(tree)[ply - 1];
+      despachar({ tipo: 'ir', id: destino?.id ?? tree.rootId });
+    },
+    [tree],
+  );
+
+  const flechas = nodo?.uci
     ? [
         {
-          startSquare: jugadaActual.uci.slice(0, 2),
-          endSquare: jugadaActual.uci.slice(2, 4),
-          color: jugadaActual.classification === 3 ? '#e0604f' : '#d9603f',
+          startSquare: nodo.uci.slice(0, 2),
+          endSquare: nodo.uci.slice(2, 4),
+          color: datos?.classification === 3 ? '#e0604f' : '#d9603f',
         },
       ]
     : [];
 
-  // La tarjeta de la jugada actual toma el color de su clasificacion: coral apagado para un
-  // error grave, borde neutro para el resto. El glifo de `Clasificacion` sigue siendo el canal.
+  // Los dos relojes del momento que se esta mirando. Solo tienen sentido en la partida real: en
+  // una variacion no hubo reloj porque esas jugadas no se jugaron.
+  const relojes = relojesEnPly(
+    principal.map((n) => n.datos?.clockMs ?? null),
+    plyEnGrafico,
+    baseSeconds,
+  );
+  const mueveBlancas = fenActual === '' || fenActual.split(' ')[1] !== 'b';
+
+  // La mejor jugada se traduce desde la posicion ANTERIOR, que es la del nodo padre.
+  const mejorJugada = mejorEnSan(
+    nodo?.parentId ? tree.nodes[nodo.parentId]?.fen : undefined,
+    datos?.bestUci ?? null,
+  );
+
   const tonoTarjeta =
-    jugadaActual?.isMine && jugadaActual.classification === 3
+    datos?.isMine && datos.classification === 3
       ? 'border-critico/30 bg-critico/[0.07]'
-      : jugadaActual?.isMine && jugadaActual.classification === 2
+      : datos?.isMine && datos.classification === 2
         ? 'border-serio/30 bg-serio/[0.07]'
         : 'border-borde bg-panel';
 
   return (
     <div className="grid gap-[26px] lg:grid-cols-[minmax(0,520px)_1fr]">
       <div className="min-w-0">
-        <div className="overflow-hidden rounded-xl">
-          <Chessboard
-            options={{
-              position: fens[plyAcotado],
-              boardOrientation: orientacion,
-              allowDragging: false,
-              arrows: flechas,
-              darkSquareStyle: { backgroundColor: '#769656' },
-              lightSquareStyle: { backgroundColor: '#eeeed2' },
-            }}
+        <Reloj
+          nombre={orientacion === 'white' ? jugadorNegras : jugadorBlancas}
+          ms={orientacion === 'white' ? relojes.negras : relojes.blancas}
+          activo={orientacion === 'white' ? !mueveBlancas : mueveBlancas}
+        />
+        <div className="mt-1.5 flex items-stretch gap-2.5">
+          <BarraVentaja
+            evalCp={datos?.evalCp ?? null}
+            mateIn={datos?.mateIn ?? null}
+            orientacion={orientacion}
+            alto={ALTO_TABLERO}
           />
+          <div className="min-w-0 flex-1 overflow-hidden rounded-xl">
+            <Chessboard
+              options={{
+                position: fenActual,
+                boardOrientation: orientacion,
+                // Se puede mover por los DOS bandos: cualquier jugada abre una variacion.
+                allowDragging: true,
+                onPieceDrop: ({ sourceSquare, targetSquare }) => {
+                  if (!targetSquare) return false;
+                  despachar({ tipo: 'jugar', from: sourceSquare, to: targetSquare, promotion: 'q' });
+                  // El reducer ya movio si era legal; devolver false deja que react-chessboard
+                  // repinte desde `position`, la unica fuente de verdad del tablero.
+                  return false;
+                },
+                arrows: flechas,
+                darkSquareStyle: { backgroundColor: '#769656' },
+                lightSquareStyle: { backgroundColor: '#eeeed2' },
+              }}
+            />
+          </div>
         </div>
+        <Reloj
+          nombre={orientacion === 'white' ? jugadorBlancas : jugadorNegras}
+          ms={orientacion === 'white' ? relojes.blancas : relojes.negras}
+          activo={orientacion === 'white' ? mueveBlancas : !mueveBlancas}
+        />
 
-        <div className="mt-3 flex items-center justify-between gap-2">
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
           <div className="flex gap-1.5">
             {(
               [
-                ['⏮', 0, 'Ir al inicio'],
-                ['◀', plyAcotado - 1, 'Jugada anterior'],
-                ['▶', plyAcotado + 1, 'Jugada siguiente'],
-                ['⏭', maxPly, 'Ir al final'],
+                ['⏮', { tipo: 'inicio' }, 'Ir al inicio'],
+                ['◀', { tipo: 'anterior' }, 'Jugada anterior'],
+                ['▶', { tipo: 'siguiente' }, 'Jugada siguiente'],
+                ['⏭', { tipo: 'fin' }, 'Ir al final de esta línea'],
               ] as const
-            ).map(([icono, destino, etiqueta]) => (
+            ).map(([icono, accion, etiqueta]) => (
               <button
                 key={etiqueta}
                 type="button"
-                onClick={() => ir(destino)}
+                onClick={() => despachar(accion)}
                 aria-label={etiqueta}
                 title={etiqueta}
                 className="rounded-lg border border-borde px-2.5 py-1.5 text-[13px] text-tenue transition-colors hover:border-borde-fuerte hover:bg-panel-alto hover:text-texto"
@@ -184,53 +332,65 @@ export function GameReview({
               </button>
             ))}
           </div>
-          <span className="font-mono text-[11.5px] tabular-nums text-apagado">
-            {plyAcotado} / {maxPly} · usa ← →
-          </span>
+          {enPrincipal ? (
+            <span className="font-mono text-[11.5px] tabular-nums text-apagado">
+              {plyActual} / {principal.length} · usa ← →
+            </span>
+          ) : (
+            <Button
+              variante="fantasma"
+              onClick={() => despachar({ tipo: 'ir', id: nearestMainLine(tree, cursorId) })}
+            >
+              Volver a la partida
+            </Button>
+          )}
         </div>
 
-        {jugadaActual ? (
+        {!enPrincipal ? (
+          <p className="mt-3.5 rounded-xl border border-dashed border-acento/40 bg-acento/[0.06] px-4 py-3 text-[13px] leading-relaxed text-texto-suave">
+            Estás en una variación: estas jugadas no se jugaron. Sigue moviendo para explorarla, o
+            vuelve a la partida real. Enciende el motor para ver qué opina de esta posición.
+          </p>
+        ) : datos ? (
           <div className={`mt-3.5 rounded-xl border px-4 py-3.5 ${tonoTarjeta}`}>
             <div className="flex flex-wrap items-center gap-2.5">
               <span className="font-mono text-sm font-medium">
-                {numeroDe(jugadaActual.ply)} {jugadaActual.san}
+                {numeroDe(datos.ply)} {datos.san}
               </span>
-              <Clasificacion valor={jugadaActual.isMine ? jugadaActual.classification : null} />
-              {jugadaActual.isBook ? <Badge>libro</Badge> : null}
+              <Clasificacion valor={datos.isMine ? datos.classification : null} />
+              {datos.isBook ? <Badge>libro</Badge> : null}
               <span className="ml-auto font-mono text-[11.5px] text-tenue">
-                {segundos(jugadaActual.moveTimeMs)}
-                {jugadaActual.clockMs !== null ? ` · reloj ${reloj(jugadaActual.clockMs)}` : ''}
+                {segundos(datos.moveTimeMs)}
               </span>
             </div>
             <p className="mt-2.5 text-[13.5px] leading-relaxed text-texto-suave">
-              {jugadaActual.evalCp === null ? (
+              {datos.evalCp === null ? (
                 'Sin evaluación del motor para esta posición.'
               ) : (
                 <>
                   La evaluación queda en{' '}
                   <span className="font-mono text-texto">
-                    {jugadaActual.mateIn !== null
-                      ? `M${Math.abs(jugadaActual.mateIn)}`
-                      : cpAPeones(jugadaActual.evalCp)}
+                    {datos.mateIn !== null ? `M${Math.abs(datos.mateIn)}` : cpAPeones(datos.evalCp)}
                   </span>
-                  {jugadaActual.cpLoss !== null && jugadaActual.cpLoss > 0 ? (
+                  {datos.cpLoss !== null && datos.cpLoss > 0 ? (
                     <>
                       , una caída de{' '}
-                      <span className="font-mono text-texto">{(jugadaActual.cpLoss / 100).toFixed(1)}</span> puntos
+                      <span className="font-mono text-texto">{(datos.cpLoss / 100).toFixed(1)}</span>{' '}
+                      puntos
                     </>
                   ) : null}
-                  {jugadaActual.bestUci ? (
+                  {mejorJugada ? (
                     <>
-                      . El motor jugaba <span className="font-mono text-texto">{jugadaActual.bestUci}</span>
+                      . El motor jugaba <span className="font-mono text-texto">{mejorJugada}</span>
                     </>
                   ) : null}
                   .
                 </>
               )}
             </p>
-            {jugadaActual.isMine && (jugadaActual.classification ?? 0) >= 2 ? (
+            {datos.isMine && (datos.classification ?? 0) >= 2 ? (
               <a
-                href={`/entrenador?partida=${gameId}&ply=${jugadaActual.ply}`}
+                href={`/entrenador?partida=${gameId}&ply=${datos.ply}`}
                 className="mt-2.5 inline-block text-[12.5px] font-medium text-acento hover:underline"
               >
                 Entrenar esta posición →
@@ -239,19 +399,19 @@ export function GameReview({
           </div>
         ) : (
           <p className="mt-3.5 rounded-xl border border-borde px-4 py-3.5 text-sm text-tenue">
-            Posición inicial. Avanza con ▶ o con la flecha derecha.
+            Posición inicial. Avanza con ▶, o mueve una pieza para explorar una variación.
           </p>
         )}
       </div>
 
       <div className="flex min-w-0 flex-col gap-[18px]">
         {puntosEval.some((p) => p.evalCp !== null) ? (
-          <div>
+          <div className={enPrincipal ? '' : 'opacity-60'}>
             <div className="mb-2 flex items-baseline justify-between gap-2">
               <p className="eyebrow">Evaluación</p>
               <span className="text-[11.5px] text-apagado">Blancas arriba · negras abajo</span>
             </div>
-            <EvalChart puntos={puntosEval} plyActual={plyAcotado} onSeleccionar={ir} />
+            <EvalChart puntos={puntosEval} plyActual={plyEnGrafico} onSeleccionar={irAPlyDelGrafico} />
           </div>
         ) : (
           <p className="text-xs text-tenue">
@@ -260,47 +420,34 @@ export function GameReview({
           </p>
         )}
 
+        <EnginePanel
+          status={motor.status}
+          lines={motor.lines}
+          depth={motor.depth}
+          engineName={motor.engineName}
+          fen={fenActual}
+          encendido={motorEncendido}
+          onToggle={() => setMotorEncendido((v) => !v)}
+          onElegirLinea={(uci) =>
+            despachar({
+              tipo: 'jugar',
+              from: uci.slice(0, 2),
+              to: uci.slice(2, 4),
+              promotion: uci.length > 4 ? uci.slice(4) : undefined,
+            })
+          }
+        />
+
         {resumen}
 
         <div className="min-w-0">
           <p className="eyebrow mb-2">Jugadas</p>
-          <div className="max-h-[300px] overflow-y-auto rounded-xl border border-borde">
-            <ol ref={listaRef} className="divide-y divide-borde/60">
-              {filas.map(({ numero, blancas, negras }) => (
-                <li key={numero} className="flex items-stretch">
-                  <span className="flex w-9 shrink-0 items-center bg-panel-alto/60 px-2 font-mono text-[11px] tabular-nums text-apagado">
-                    {numero}
-                  </span>
-                  {[blancas, negras].map((j, columna) =>
-                    j ? (
-                      <button
-                        key={columna}
-                        type="button"
-                        data-ply={j.ply}
-                        onClick={() => ir(j.ply)}
-                        aria-current={j.ply === plyAcotado ? 'true' : undefined}
-                        className={`flex min-w-0 flex-1 items-center gap-1.5 px-2.5 py-1.5 text-left text-[13px] transition-colors ${
-                          j.ply === plyAcotado ? 'bg-acento/15 text-texto' : 'hover:bg-panel-alto'
-                        }`}
-                      >
-                        <span className={`font-mono ${j.isMine ? 'text-texto' : 'text-tenue'}`}>{j.san}</span>
-                        <Clasificacion valor={j.isMine ? j.classification : null} soloGlifo />
-                        <span className="ml-auto shrink-0 font-mono text-[11px] tabular-nums text-apagado">
-                          {j.evalCp === null
-                            ? ''
-                            : j.mateIn !== null
-                              ? `M${Math.abs(j.mateIn)}`
-                              : cpAPeones(j.evalCp)}
-                        </span>
-                      </button>
-                    ) : (
-                      <span key={columna} className="flex-1" />
-                    ),
-                  )}
-                </li>
-              ))}
-            </ol>
-          </div>
+          <MoveList
+            tree={tree}
+            cursorId={cursorId}
+            onIr={ir}
+            onBorrar={(id) => despachar({ tipo: 'borrar', id })}
+          />
         </div>
       </div>
     </div>

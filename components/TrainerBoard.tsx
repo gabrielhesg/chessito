@@ -5,7 +5,14 @@ import { useRouter } from 'next/navigation';
 import { Chess } from 'chess.js';
 import { Chessboard } from 'react-chessboard';
 import { recordAttempt } from '@/lib/spaced-repetition/actions';
-import { explicarBlunder, type Explicacion, type Linea } from '@/lib/puzzles/explain';
+import {
+  conceptoDelError,
+  describirLinea,
+  explicarBlunder,
+  type Explicacion,
+  type Linea,
+} from '@/lib/puzzles/explain';
+import { useBrowserEngine } from '@/lib/engine/useBrowserEngine';
 import { Badge, Button } from '@/components/ui';
 
 export type PuzzleUI = {
@@ -30,7 +37,14 @@ const NOMBRE_THEME: Record<string, string> = {
   permite_horquilla: 'Permite horquilla',
 };
 
-const MAX_INTENTOS = 3;
+/**
+ * No hay limite de intentos: se prueba hasta resolver. El corte a los tres cerraba el ejercicio
+ * justo cuando el alumno seguia pensando, que es lo contrario de lo que un ejercicio deberia
+ * hacer. Quien quiere ver la respuesta tiene el boton "Ver solucion".
+ *
+ * Esto NO ablanda la repeticion espaciada: SM-2 califica por acierto al PRIMER intento y sin
+ * pista (`lib/spaced-repetition/actions.ts`), asi que insistir no adelanta la proxima aparicion.
+ */
 
 type Estado = 'jugando' | 'resuelto' | 'fallado';
 
@@ -58,16 +72,34 @@ function LineaJugadas({ linea, desdePly }: { linea: Linea; desdePly: number }) {
   );
 }
 
+/** La posicion despues de una jugada. null si la jugada es ilegal ahi. */
+function fenDespuesDe(fen: string, uci: string): string | null {
+  try {
+    const tablero = new Chess(fen);
+    tablero.move({
+      from: uci.slice(0, 2),
+      to: uci.slice(2, 4),
+      promotion: uci.length > 4 ? uci.slice(4) : undefined,
+    });
+    return tablero.fen();
+  } catch {
+    return null;
+  }
+}
+
 function PanelExplicacion({
   explicacion,
   puzzle,
   estado,
+  estadoMotor,
 }: {
   explicacion: Explicacion;
   puzzle: PuzzleUI;
   estado: Estado;
+  /** Para avisar que la linea se esta calculando en vez de decir que no existe. */
+  estadoMotor: 'calculando' | 'listo' | 'sin-motor';
 }) {
-  const { refutacion, solucion, jugadaSan, mejorSan } = explicacion;
+  const { refutacion, solucion, jugadaSan, mejorSan, concepto } = explicacion;
   const material = refutacion?.materialPerdido ?? 0;
 
   return (
@@ -123,14 +155,24 @@ function PanelExplicacion({
             </p>
           </div>
         </div>
+      ) : estadoMotor === 'calculando' ? (
+        <p className="text-xs text-tenue">Calculando cómo te castigaba el rival…</p>
       ) : (
         <p className="text-xs text-tenue">
-          Este ejercicio todavía no tiene la línea de refutación guardada. Se rellena la próxima
-          vez que corra <code className="text-apagado">puzzles:enrich</code>.
+          No se pudo calcular la línea del castigo para esta posición.
         </p>
       )}
 
-      {solucion && solucion.pasos.length > 1 ? (
+      {concepto ? (
+        <div className="rounded-xl border border-aviso/30 bg-aviso/[0.07] px-4 py-3">
+          <p className="mb-1 font-mono text-[10.5px] font-medium uppercase tracking-[0.11em] text-aviso">
+            En qué te equivocaste
+          </p>
+          <p className="text-[13.5px] leading-relaxed text-texto-suave">{concepto.texto}</p>
+        </div>
+      ) : null}
+
+      {solucion && solucion.pasos.length > 0 ? (
         <div>
           <p className="mb-1.5 font-mono text-[10.5px] font-medium tracking-[0.11em] text-tenue">
             <span className="uppercase">Qué lograba</span>{' '}
@@ -201,6 +243,12 @@ export function TrainerBoard({
   const [intentos, setIntentos] = useState(0);
   const [pistaUsada, setPistaUsada] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
+  /**
+   * La ultima jugada mala que se probo. Si es distinta del blunder original, la refutacion no
+   * esta guardada en la base y hay que pedirsela al motor del navegador: explicar SOLO el error
+   * de la partida dejaria sin respuesta "¿y por que estaba mal LA QUE YO probe?".
+   */
+  const [jugadaProbada, setJugadaProbada] = useState<string | null>(null);
   const [flechas, setFlechas] = useState<Array<{ startSquare: string; endSquare: string; color: string }>>([]);
 
   // El cronometro arranca al montar, no durante el render: `performance.now()` es impuro y en
@@ -211,18 +259,69 @@ export function TrainerBoard({
     iniciadoRef.current = performance.now();
   }, []);
 
+  /**
+   * El concepto de una jugada mala, con lo que hay a mano y sin esperar al motor: si es el error
+   * original se usa su refutacion guardada, y si no, se deriva del tablero igual (patron
+   * estructural y caida del motor ya conocida). Se llama en el momento del error para poder
+   * guardarlo con el intento.
+   */
+  const conceptoDeJugada = useCallback(
+    (uci: string): string | null => {
+      const linea =
+        uci === puzzle.playedUci && puzzle.refutationLine?.length
+          ? describirLinea(fenDespuesDe(puzzle.fen, uci) ?? puzzle.fen, puzzle.refutationLine, false)
+          : null;
+      return (
+        conceptoDelError({ fen: puzzle.fen, playedUci: uci, refutacion: linea, cpLoss: puzzle.cpLoss })
+          ?.tipo ?? null
+      );
+    },
+    [puzzle],
+  );
+
+  /**
+   * La jugada que se explica: la que probaste si probaste alguna, y si no, el error original de
+   * la partida. Al rendirse (`playedUci` vacio) tambien cae al error original.
+   */
+  const jugadaAExplicar = jugadaProbada ?? puzzle.playedUci;
+  const esElErrorOriginal = jugadaAExplicar === puzzle.playedUci;
+
+  /**
+   * Cuando la jugada probada NO es el blunder original, su refutacion no esta guardada: se la
+   * pide al motor del navegador. Solo se enciende al cerrar el ejercicio, para no gastar los
+   * 7 MB del motor mientras estas pensando.
+   */
+  const motor = useBrowserEngine({
+    fen: puzzle.fen,
+    uciMoves: [jugadaAExplicar],
+    enabled: estado !== 'jugando' && !esElErrorOriginal,
+    multiPv: 1,
+    depth: 14,
+  });
+
+  const lineaDelMotor = motor.lines[0]?.pv ?? null;
+
   const explicacion = useMemo(
     () =>
       explicarBlunder({
         fen: puzzle.fen,
-        playedUci: puzzle.playedUci,
+        playedUci: jugadaAExplicar,
         bestUci: puzzle.bestUci,
-        refutationLine: puzzle.refutationLine,
+        // La guardada solo sirve para el error original; para otra jugada, la del motor.
+        refutationLine: esElErrorOriginal ? puzzle.refutationLine : lineaDelMotor,
         solutionLine: puzzle.solutionLine,
         cpLoss: puzzle.cpLoss,
       }),
-    [puzzle],
+    [puzzle, jugadaAExplicar, esElErrorOriginal, lineaDelMotor],
   );
+
+  const estadoMotor: 'calculando' | 'listo' | 'sin-motor' = esElErrorOriginal
+    ? 'listo'
+    : motor.status === 'cargando' || motor.status === 'pensando'
+      ? 'calculando'
+      : motor.status === 'error' || motor.status === 'no-soportado'
+        ? 'sin-motor'
+        : 'listo';
 
   /** Reproduce la linea de refutacion sobre el tablero: ver el castigo es la explicacion. */
   const mostrarRefutacion = useCallback(() => {
@@ -269,11 +368,12 @@ export function TrainerBoard({
         msTaken: Math.round(performance.now() - iniciadoRef.current),
         attemptNo: numeroIntento,
         hintUsed: pistaUsada,
+        concepto: resuelto ? null : conceptoDeJugada(playedUci || puzzle.playedUci),
         cierra: true,
       });
       if (!resuelto) mostrarRefutacion();
     },
-    [puzzle.id, pistaUsada, mostrarRefutacion],
+    [puzzle.id, puzzle.playedUci, pistaUsada, mostrarRefutacion, conceptoDeJugada],
   );
 
   const onPieceDrop = useCallback(
@@ -298,24 +398,21 @@ export function TrainerBoard({
         setAviso(null);
         setFlechas([]);
 
-        if (numeroIntento >= MAX_INTENTOS) {
-          cerrar(false, uci, numeroIntento);
-        } else {
-          void recordAttempt({
-            puzzleId: puzzle.id,
-            playedUci: uci,
-            correct: false,
-            msTaken: Math.round(performance.now() - iniciadoRef.current),
-            attemptNo: numeroIntento,
-            hintUsed: pistaUsada,
-            cierra: false,
-          });
-          setAviso(
-            `Esa no. Te ${MAX_INTENTOS - numeroIntento === 1 ? 'queda' : 'quedan'} ${MAX_INTENTOS - numeroIntento} ${
-              MAX_INTENTOS - numeroIntento === 1 ? 'intento' : 'intentos'
-            }.`,
-          );
-        }
+        void recordAttempt({
+          puzzleId: puzzle.id,
+          playedUci: uci,
+          correct: false,
+          msTaken: Math.round(performance.now() - iniciadoRef.current),
+          attemptNo: numeroIntento,
+          hintUsed: pistaUsada,
+          // El concepto se deriva aca, en el momento del error, y se guarda con el intento. Es
+          // lo que despues permite servir OTRO ejercicio del MISMO concepto en vez de repetir
+          // la misma posicion hasta memorizar la respuesta.
+          concepto: conceptoDeJugada(uci),
+          cierra: false,
+        });
+        setJugadaProbada(uci);
+        setAviso('Esa no. Prueba otra.');
         return false;
       }
 
@@ -348,7 +445,7 @@ export function TrainerBoard({
 
       return true;
     },
-    [estado, game, solucion, paso, intentos, cerrar, puzzle.id, pistaUsada],
+    [estado, game, solucion, paso, intentos, cerrar, puzzle.id, pistaUsada, conceptoDeJugada],
   );
 
   const pedirPista = useCallback(() => {
@@ -409,7 +506,7 @@ export function TrainerBoard({
             ) : null}
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs text-tenue">
-                Intento {intentos + 1} de {MAX_INTENTOS}
+                {intentos === 0 ? 'Primer intento' : `Intento ${intentos + 1}`}
               </span>
               <Button variante="fantasma" onClick={pedirPista}>
                 Pista
@@ -421,7 +518,12 @@ export function TrainerBoard({
           </div>
         ) : (
           <>
-            <PanelExplicacion explicacion={explicacion} puzzle={puzzle} estado={estado} />
+            <PanelExplicacion
+              explicacion={explicacion}
+              puzzle={puzzle}
+              estado={estado}
+              estadoMotor={estadoMotor}
+            />
             <Button variante="primario" onClick={siguiente}>
               Siguiente ejercicio
             </Button>

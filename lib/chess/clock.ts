@@ -49,3 +49,55 @@ export function moveTimesMs({ clocksMs, baseSeconds, incrementSecs }: MoveTimeIn
     return used < 0 ? 0 : used;
   });
 }
+
+export type RelojesEnPly = {
+  /** Milisegundos que le quedaban a blancas despues del ply pedido. null si no se puede saber. */
+  blancas: number | null;
+  negras: number | null;
+};
+
+/**
+ * Cuanto le quedaba a CADA jugador en un momento de la partida, para mostrar los dos relojes
+ * junto al tablero como en cualquier visor.
+ *
+ * `moves.clock_ms` guarda el reloj de quien acaba de mover, asi que los dos relojes se
+ * intercalan: el de blancas es el ultimo ply IMPAR <= al pedido, el de negras el ultimo PAR.
+ * Es la misma trampa del ply n-2 de `moveTimesMs`, vista desde el otro lado.
+ *
+ * Antes de que un bando haya movido, su reloj no es null: es el tiempo base del control de
+ * tiempo. Si fuera null, los dos relojes aparecerian vacios en la posicion inicial, que es
+ * justo cuando mas obvio es cuanto tiempo habia.
+ *
+ * `ply` 0 es la posicion inicial. Un `clock_ms` null (correspondencia sin %clk) se salta y se
+ * sigue buscando hacia atras, en vez de dar por perdido el reloj de ese bando.
+ */
+export function relojesEnPly(
+  clocksMs: readonly (number | null)[],
+  ply: number,
+  baseSeconds: number,
+): RelojesEnPly {
+  const base = baseSeconds > 0 ? baseSeconds * 1000 : null;
+  const hasta = Math.max(0, Math.min(ply, clocksMs.length));
+
+  const ultimoDe = (impar: boolean): number | null => {
+    for (let i = hasta; i >= 1; i -= 1) {
+      // i es el numero de ply (1-based); el arreglo esta indexado desde 0.
+      if (i % 2 === 1 !== impar) continue;
+      const valor = clocksMs[i - 1];
+      if (valor !== null && valor !== undefined) return valor;
+    }
+    return base;
+  };
+
+  return { blancas: ultimoDe(true), negras: ultimoDe(false) };
+}
+
+/** `614000` -> `"10:14"`. Bajo un minuto muestra decimas, que es cuando importan. */
+export function formatClock(ms: number | null): string {
+  if (ms === null) return '—';
+  const total = Math.max(0, ms) / 1000;
+  const minutos = Math.floor(total / 60);
+  const segundos = total - minutos * 60;
+  if (minutos === 0 && segundos < 60) return `0:${segundos.toFixed(1).padStart(4, '0')}`;
+  return `${minutos}:${String(Math.floor(segundos)).padStart(2, '0')}`;
+}

@@ -10,6 +10,7 @@
  * numeros se pueden testear contra posiciones reales sin comparar strings.
  */
 import { Chess, type Square } from 'chess.js';
+import { inferTheme, type Theme } from '@/lib/chess/theme';
 
 const VALOR: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 
@@ -40,6 +41,73 @@ export type Linea = {
   terminaEnMate: boolean;
 };
 
+/**
+ * En que te equivocaste, nombrado. No es lo mismo que `puzzles.theme`: aquel describe el error
+ * ORIGINAL de la partida, y esto describe la jugada que acabas de probar, que puede ser otra.
+ * Es la diferencia entre "este ejercicio es de pieza colgada" y "TU acabas de colgar una pieza".
+ *
+ * `permite_mate` y `pierde_material` son las redes de seguridad: cuando el patron estructural no
+ * se reconoce pero la linea igual muestra un desastre, es mejor decir "pierdes 5 puntos de
+ * material" que no decir nada.
+ */
+export type Concepto =
+  | Theme
+  | 'permite_mate'
+  | 'pierde_material'
+  | 'empeora_la_posicion';
+
+export type ConceptoExplicado = {
+  tipo: Concepto;
+  /** Una frase en espanol llano, derivada de los hechos de la linea. Nunca inventada. */
+  texto: string;
+};
+
+const TEXTO_CONCEPTO: Record<Concepto, string> = {
+  pieza_colgada: 'Dejaste una pieza sin defensa suficiente: el rival la gana sin dar nada a cambio.',
+  mate_pasillo: 'Tu rey quedó encerrado en su propia fila, sin casillas por donde escapar.',
+  permite_horquilla: 'Dejaste dos piezas donde un caballo rival las ataca a las dos a la vez.',
+  permite_mate: 'Permitiste una secuencia forzada de mate.',
+  pierde_material: 'Pierdes material por la fuerza: el rival cobra y tú no recuperas.',
+  empeora_la_posicion: 'No pierdes material de inmediato, pero la posición empeora bastante.',
+};
+
+/**
+ * Nombra el error. El orden importa: primero lo que termina la partida (mate), despues el patron
+ * estructural concreto, y solo al final la red de seguridad generica.
+ */
+export function conceptoDelError({
+  fen,
+  playedUci,
+  refutacion,
+  cpLoss,
+}: {
+  fen: string;
+  playedUci: string;
+  refutacion: Linea | null;
+  cpLoss: number;
+}): ConceptoExplicado | null {
+  if (refutacion?.terminaEnMate) {
+    return { tipo: 'permite_mate', texto: TEXTO_CONCEPTO.permite_mate };
+  }
+
+  const patron = inferTheme({
+    fenBefore: fen,
+    playedUci,
+    // `inferTheme` solo mira la magnitud: una linea que acaba en mate ya se atrapo arriba.
+    mateIn: refutacion?.terminaEnMate ? 1 : null,
+  });
+  if (patron) return { tipo: patron, texto: TEXTO_CONCEPTO[patron] };
+
+  if ((refutacion?.materialPerdido ?? 0) > 0) {
+    return { tipo: 'pierde_material', texto: TEXTO_CONCEPTO.pierde_material };
+  }
+  // Sin patron ni material, solo vale la pena nombrarlo si la caida fue de verdad.
+  if (cpLoss >= 100) {
+    return { tipo: 'empeora_la_posicion', texto: TEXTO_CONCEPTO.empeora_la_posicion };
+  }
+  return null;
+}
+
 export type Explicacion = {
   /** La jugada que se jugo, en notacion algebraica. */
   jugadaSan: string | null;
@@ -51,6 +119,8 @@ export type Explicacion = {
   solucion: Linea | null;
   /** Centipeones perdidos, tal cual los calculo el analizador de la Fase 3. */
   cpLoss: number;
+  /** En que concepto fallaste, nombrado. null si la jugada no fue lo bastante mala. */
+  concepto: ConceptoExplicado | null;
 };
 
 /** Reproduce una linea UCI desde un FEN y describe lo que pasa en ella. */
@@ -161,12 +231,15 @@ export function explicarBlunder({
     fenDespues = null;
   }
 
+  const refutacion =
+    fenDespues && refutationLine?.length ? describirLinea(fenDespues, refutationLine, false) : null;
+
   return {
     jugadaSan,
     mejorSan,
-    refutacion:
-      fenDespues && refutationLine?.length ? describirLinea(fenDespues, refutationLine, false) : null,
+    refutacion,
     solucion: solutionLine?.length ? describirLinea(fen, solutionLine, true) : null,
     cpLoss,
+    concepto: conceptoDelError({ fen, playedUci, refutacion, cpLoss }),
   };
 }

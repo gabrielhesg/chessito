@@ -7,7 +7,16 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export default tseslint.config(
   {
-    ignores: ['.next/**', 'coverage/**', 'node_modules/**', 'next-env.d.ts', 'lib/database.types.ts'],
+    // `public/**` es codigo vendorizado (el motor WASM de Stockfish): no es nuestro y no se
+    // edita, asi que no tiene sentido pasarle el linter ni el proyecto de TypeScript.
+    ignores: [
+      '.next/**',
+      'coverage/**',
+      'node_modules/**',
+      'public/**',
+      'next-env.d.ts',
+      'lib/database.types.ts',
+    ],
   },
   ...nextCoreWebVitals,
   ...tseslint.configs.recommendedTypeChecked,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { acotar, escalaLineal, ticksLegibles } from '@/lib/charts/scale';
-import { caminoArea, caminoLinea } from '@/lib/charts/path';
+import { caminoArea, caminoAreaCurva, caminoCurva, caminoLinea } from '@/lib/charts/path';
 
 describe('escalaLineal', () => {
   it('mapea los extremos del dominio a los extremos del rango', () => {
@@ -93,5 +93,76 @@ describe('caminoArea', () => {
 
   it('devuelve vacio sin puntos', () => {
     expect(caminoArea([], 0)).toBe('');
+  });
+});
+
+describe('caminoCurva', () => {
+  const puntos = [
+    { x: 0, y: 50 },
+    { x: 10, y: 10 },
+    { x: 20, y: 90 },
+    { x: 30, y: 50 },
+  ];
+
+  it('arranca en el primer punto y termina en el ultimo', () => {
+    const d = caminoCurva(puntos);
+    expect(d.startsWith('M0 50')).toBe(true);
+    expect(d.endsWith('30 50')).toBe(true);
+  });
+
+  it('pasa POR cada punto: cada segmento cubico termina en el punto siguiente', () => {
+    const d = caminoCurva(puntos);
+    // El destino de una curva cubica es el ultimo par de cada comando C.
+    const destinos = [...d.matchAll(/C[^C]*?,\s*[-\d.]+ [-\d.]+,\s*([-\d.]+) ([-\d.]+)/g)].map(
+      (m) => ({ x: Number(m[1]), y: Number(m[2]) }),
+    );
+    expect(destinos).toEqual(puntos.slice(1));
+  });
+
+  it('con menos de tres puntos no hay nada que curvar y cae a la recta', () => {
+    const dos = [
+      { x: 0, y: 0 },
+      { x: 10, y: 10 },
+    ];
+    expect(caminoCurva(dos)).toBe(caminoLinea(dos));
+    expect(caminoCurva([])).toBe('');
+  });
+
+  it('tension 0 deja los controles sobre los propios puntos, es decir, rectas', () => {
+    const d = caminoCurva(puntos, { tension: 0 });
+    expect(d).toContain('C0 50, 10 10, 10 10');
+  });
+
+  it('acota los puntos de control al limite, que es lo que evita que un pico se salga de la caja', () => {
+    // Un pico agudo: sin limite, los controles se van bastante mas arriba de y=0.
+    const pico = [
+      { x: 0, y: 100 },
+      { x: 10, y: 0 },
+      { x: 20, y: 100 },
+      { x: 30, y: 100 },
+    ];
+    const d = caminoCurva(pico, { limiteY: [0, 100] });
+    const todasLasY = [...d.matchAll(/[-\d.]+ ([-\d.]+)/g)].map((m) => Number(m[1]));
+    expect(Math.min(...todasLasY)).toBeGreaterThanOrEqual(0);
+    expect(Math.max(...todasLasY)).toBeLessThanOrEqual(100);
+  });
+});
+
+describe('caminoAreaCurva', () => {
+  const puntos = [
+    { x: 0, y: 40 },
+    { x: 10, y: 20 },
+    { x: 20, y: 60 },
+  ];
+
+  it('abre en la base, recorre la curva y cierra en la base', () => {
+    const d = caminoAreaCurva(puntos, 50);
+    expect(d.startsWith('M0 50 L0 40')).toBe(true);
+    expect(d.endsWith('L20 50 Z')).toBe(true);
+    expect(d).toContain('C');
+  });
+
+  it('sin puntos no dibuja nada', () => {
+    expect(caminoAreaCurva([], 50)).toBe('');
   });
 });

@@ -1,6 +1,6 @@
 'use client';
 
-import { caminoArea, caminoLinea, type Punto } from '@/lib/charts/path';
+import { caminoAreaCurva, caminoCurva, type Punto } from '@/lib/charts/path';
 import { escalaLineal } from '@/lib/charts/scale';
 import { winPct } from '@/lib/analysis/winpct';
 
@@ -40,6 +40,11 @@ export function EvalChart({
   if (conEval.length < 2) return null;
 
   const ANCHO = 1000;
+  // La evaluacion de una partida es una senal continua, no una serie de escalones: la curva se
+  // lee mucho mejor que la linea quebrada. `limiteY` es obligatorio y no decorativo — una
+  // Catmull-Rom sobrepasa el rango al pasar por un pico, y un mate seguido de una posicion
+  // igualada es justo ese caso, asi que sin el recorte la curva se sale de la caja del SVG.
+  const CURVA = { tension: 1, limiteY: [0, alto] as [number, number] };
   const maxPly = Math.max(...puntos.map((p) => p.ply));
   const x = escalaLineal([1, maxPly], [0, ANCHO]);
   const y = escalaLineal([0, 100], [alto, 0]);
@@ -78,10 +83,10 @@ export function EvalChart({
         }}
       >
         <rect x={0} y={0} width={ANCHO} height={alto} fill="var(--color-ventaja-negras)" opacity={0.25} />
-        <path d={caminoArea(serie, cero)} fill="var(--color-ventaja-blancas)" opacity={0.85} />
+        <path d={caminoAreaCurva(serie, cero, CURVA)} fill="var(--color-ventaja-blancas)" opacity={0.85} />
         <line x1={0} y1={cero} x2={ANCHO} y2={cero} stroke="var(--color-eje)" strokeWidth={1} vectorEffect="non-scaling-stroke" />
         <path
-          d={caminoLinea(serie)}
+          d={caminoCurva(serie, CURVA)}
           fill="none"
           stroke="var(--color-texto)"
           strokeWidth={1}
