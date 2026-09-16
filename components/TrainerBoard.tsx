@@ -384,9 +384,12 @@ export type PatronUI = {
   ejercicios: number;
   /** Largo de la barra respecto del concepto que mas repites. No es un porcentaje de acierto. */
   pct: number;
-  /** Aciertos al primer intento sobre ese concepto, en porcentaje. null si nunca fue primero. */
-  acierto: number | null;
-  primeros: number;
+  /**
+   * `empeora_la_posicion` es el cajon de "ninguno de los otros" y se lleva tres cuartos de los
+   * intentos: se muestra separado, porque presentarlo como un patron mas es nombrar una
+   * debilidad que no existe.
+   */
+  esResiduo: boolean;
   /** La frase que explica el concepto. */
   detalle: string;
 };
@@ -1074,14 +1077,15 @@ export function TrainerBoard({
           <div className="mt-1.5 border-t border-borde pt-3.5">
             <p className="eyebrow mb-1">Los errores que más has repetido</p>
             <p className="mb-2.5 text-[11.5px] leading-relaxed text-apagado">
-              Tus intentos fallados agrupados por tipo de error, contando{" "}
-              <strong className="text-tenue">solo partidas de rápida</strong>:
-              en bala y en blitz un error dice más del reloj que de lo que
-              entiendes. Es tu historial completo, así que un error ya corregido
-              sigue apareciendo.
+              Tus intentos fallados agrupados por tipo de error. Es tu historial
+              completo, así que un error ya corregido sigue apareciendo. Al lado
+              de cada uno va en cuántos ejercicios distintos ocurrió: eso es lo
+              que dice si es un patrón o una sola posición que se te atravesó.
             </p>
             <div className="flex flex-col gap-2.5 text-[12.5px]">
-              {patrones.map((p) => (
+              {patrones
+                .filter((p) => !p.esResiduo)
+                .map((p) => (
                 <div key={p.etiqueta}>
                   <div className="flex items-center gap-2.5">
                     <span className="min-w-0 flex-1 truncate text-texto-suave">
@@ -1095,7 +1099,9 @@ export function TrainerBoard({
                     </span>
                     <span className="w-28 shrink-0 text-right font-mono text-[11px] text-apagado">
                       {p.intentos} {p.intentos === 1 ? "vez" : "veces"}
-                      {p.acierto !== null ? ` · ${p.acierto.toFixed(0)}%` : ""}
+                      {" · "}
+                      {p.ejercicios}{" "}
+                      {p.ejercicios === 1 ? "ejercicio" : "ejercicios"}
                     </span>
                   </div>
                   {p.detalle ? (
@@ -1106,10 +1112,22 @@ export function TrainerBoard({
                 </div>
               ))}
             </div>
+            {/* El residuo va aparte y nombrado como lo que es. Mezclado con los demas ganaba
+                siempre, porque acumula todo lo que ningun detector reconocio. */}
+            {patrones
+              .filter((p) => p.esResiduo)
+              .map((p) => (
+                <p key={p.etiqueta} className="mt-2.5 text-[11.5px] leading-relaxed text-apagado">
+                  Otros {p.intentos} intentos, en {p.ejercicios}{" "}
+                  {p.ejercicios === 1 ? "ejercicio" : "ejercicios"}, empeoraron la
+                  posición sin que ninguno de los patrones de arriba lo explique.
+                  No es un patrón: es lo que queda sin clasificar.
+                </p>
+              ))}
             <p className="mt-2.5 text-[11px] text-apagado">
-              El porcentaje es cuántas veces acertaste al primer intento y sin
-              pista en ejercicios de ese tipo. La barra compara cuánto repites
-              cada uno.
+              La barra compara cuánto repites cada uno. No hay porcentaje de
+              acierto: el que salía antes solo podía valer 0 %, porque el
+              concepto del error únicamente se guarda cuando fallas.
             </p>
           </div>
         ) : null}

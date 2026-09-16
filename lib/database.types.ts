@@ -499,6 +499,13 @@ export type Database = {
         }
         Relationships: []
       }
+      v_ejercicios_vencidos_por_tema: {
+        Row: {
+          theme: string | null
+          n: number | null
+        }
+        Relationships: []
+      }
       v_errors_by_move_time: {
         Row: {
           time_class: string | null
@@ -666,6 +673,14 @@ export type Database = {
           n_games: number | null
           n_unresolved: number | null
           pct_unresolved: number | null
+        }
+        Relationships: []
+      }
+      v_rapida_por_formato: {
+        Row: {
+          month_local: string | null
+          time_control: string | null
+          n: number | null
         }
         Relationships: []
       }

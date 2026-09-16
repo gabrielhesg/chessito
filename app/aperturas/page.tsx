@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { openingPerformance, analysisCoverage } from '@/lib/data';
+import { openingPerformance, coberturaAnalisis, type OpeningPerformance } from '@/lib/data';
 import {
   Ayuda,
   Badge,
@@ -15,6 +15,9 @@ import {
 import { BarrasH, type BarraH } from '@/components/charts/BarrasH';
 
 export const dynamic = 'force-dynamic';
+
+/** La misma clase que filtra /errores y /ritmo: el plan de entrenamiento es de rapida. */
+const CLASE = 'rapid';
 
 type SortKey = 'wilson' | 'n' | 'name';
 const SORT_KEYS: SortKey[] = ['wilson', 'n', 'name'];
@@ -46,13 +49,20 @@ export default async function AperturasPage({
   const sort: SortKey = esSortKey(params.sort) ? params.sort : 'wilson';
   const dir: 'asc' | 'desc' = params.dir === 'desc' ? 'desc' : 'asc';
 
-  const [filas, cobertura] = await Promise.all([openingPerformance(), analysisCoverage()]);
+  const [todas, cobertura] = await Promise.all([openingPerformance(), coberturaAnalisis()]);
 
-  const analizadas = cobertura.reduce((s, c) => s + (c.n_analyzed ?? 0), 0);
-  const totalPartidas = cobertura.reduce((s, c) => s + (c.n_games ?? 0), 0);
+  // Solo rapida, con el mismo argumento escrito que ya usaba /errores: el rendimiento de una
+  // apertura en bala y en rapida no son la misma cantidad. El grafico mezclaba las tres clases
+  // y la clase solo vivia en un `title`, que no abre con tap: por eso se veian dos filas
+  // "Scandinavian Defens... 30%" que eran la misma apertura en clases distintas.
+  const filas: OpeningPerformance[] = todas.filter((f) => f.time_class === CLASE);
+
+  const deLaClase = cobertura.find((c) => c.time_class === CLASE);
+  const analizadas = deLaClase?.n_analyzed ?? 0;
+  const totalPartidas = deLaClase?.n_analizables ?? 0;
 
   const signo = dir === 'asc' ? 1 : -1;
-  const comparar = (a: (typeof filas)[number], b: (typeof filas)[number]): number => {
+  const comparar = (a: OpeningPerformance, b: OpeningPerformance): number => {
     if (sort === 'n') return signo * ((a.n ?? 0) - (b.n ?? 0));
     if (sort === 'name') return signo * (a.opening_name ?? '').localeCompare(b.opening_name ?? '');
     return signo * ((a.score_pct_lower ?? 0) - (b.score_pct_lower ?? 0));
@@ -85,7 +95,17 @@ export default async function AperturasPage({
       titulo="Aperturas"
       subtitulo={
         <>
-          Contra qué aperturas pierdes y con qué color. El rendimiento usa la cota inferior de Wilson; bajo 20 partidas la fila sale atenuada y sin recomendación.{' '} {analizadas > 0 ? ( <> La columna de divergencia sale del motor: {analizadas.toLocaleString('es-CL')} de{' '} {totalPartidas.toLocaleString('es-CL')} partidas analizadas. </> ) : ( <> La columna de divergencia necesita el motor y todavía no hay partidas analizadas. </> )}
+          <strong className="text-tenue">Solo partidas de rápida.</strong> El rendimiento de una
+          apertura en bala y en rápida no son la misma cantidad, y tu plan es de rápida. Usa la
+          cota inferior de Wilson; bajo 20 partidas la fila sale atenuada y sin recomendación.{' '}
+          {analizadas > 0 ? (
+            <>
+              La columna de divergencia sale del motor: {analizadas.toLocaleString('es-CL')} de{' '}
+              {totalPartidas.toLocaleString('es-CL')} partidas de rápida analizadas.
+            </>
+          ) : (
+            <>La columna de divergencia necesita el motor y todavía no hay partidas de rápida analizadas.</>
+          )}
         </>
       }
     >

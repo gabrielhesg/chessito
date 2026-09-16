@@ -282,3 +282,64 @@ union all
          'mas del 35% de las jugadas propias en fase final significa que el umbral de '
          'lib/chess/phase.ts esta mal calibrado, no que se jueguen muchos finales'
   from moves where is_mine;
+
+-- ============================================================
+-- 6 · dos vistas que sacan agregaciones de TypeScript
+-- ============================================================
+-- La regla del proyecto es explicita: "las agregaciones entre filas viven en vistas SQL, no en
+-- TypeScript". `dueByTheme` agrupaba en memoria sobre un `limit(1000)` arbitrario, que con 397
+-- vencidos funciona y con 1.200 daria un desglose incompleto SIN AVISAR. Es el peor tipo de
+-- error: correcto hoy, incorrecto en tres meses, identico en pantalla.
+create or replace view v_ejercicios_vencidos_por_tema as
+select
+  p.theme,
+  count(*)::int as n
+from puzzles p
+where p.due_at <= now()
+group by p.theme;
+
+alter view v_ejercicios_vencidos_por_tema set (security_invoker = on);
+
+comment on view v_ejercicios_vencidos_por_tema is
+  'Ejercicios vencidos agrupados por patron tactico. Reemplaza la agregacion en TypeScript de '
+  'dueByTheme, que truncaba en silencio a 1000 filas.';
+
+-- El formato exacto dentro de rapida. Su plan declara 15+10 y el historico tiene 19 partidas en
+-- 900+10 contra 2.569 en 600: la app no podia notar una desviacion del plan que sus propios
+-- datos contienen, porque ninguna vista agrupaba por control de tiempo.
+create or replace view v_rapida_por_formato as
+select
+  to_char(g.end_time at time zone 'America/Santiago', 'YYYY-MM') as month_local,
+  g.time_control,
+  count(*)::int as n
+from games g
+where g.rules = 'chess' and g.time_class = 'rapid'
+group by 1, 2;
+
+alter view v_rapida_por_formato set (security_invoker = on);
+
+comment on view v_rapida_por_formato is
+  'Partidas de rapida por mes local y control de tiempo exacto, para distinguir 10+0 de 15+10.';
+
+-- ============================================================
+-- 7 · candados para los roles de Supabase
+-- ============================================================
+-- Igual que 0006, 0008, 0009 y 0010: las vistas nuevas no se sirven con la anon key, que viaja
+-- al navegador. `anon` y `authenticated` los crea Supabase, no PostgreSQL: en el Postgres comun
+-- de los tests no existen y un `revoke` pelado abortaria la migracion entera.
+do $$
+declare
+  v text;
+begin
+  foreach v in array array[
+    'v_cobertura_analisis', 'v_games_para_refase', 'v_conceptos_panel',
+    'v_ejercicios_vencidos_por_tema', 'v_rapida_por_formato'
+  ] loop
+    if exists (select 1 from pg_roles where rolname = 'anon') then
+      execute format('revoke all on public.%I from anon', v);
+    end if;
+    if exists (select 1 from pg_roles where rolname = 'authenticated') then
+      execute format('revoke all on public.%I from authenticated', v);
+    end if;
+  end loop;
+end $$;

@@ -8,20 +8,36 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import {
   dueByTheme,
   dueCount,
+  formatosDeRapida,
   gamesByDay,
   healthSummary,
+  medianaPorEjercicioMs,
   monthlyActivity,
   monthlySummary,
   openingPerformance,
+  rapidasDeHoy,
   ratingMaximo,
+  ultimaDerrotaDeRapida,
 } from '@/lib/data';
-import { Badge, Button, Pagina, Panel, Progreso } from '@/components/ui';
+import { formatTimeControl } from '@/lib/chess/timecontrol';
+import { Button, Pagina, Progreso } from '@/components/ui';
 import { MonthCalendar } from '@/components/charts/MonthCalendar';
 import { Sparkline } from '@/components/charts/Sparkline';
 
 export const dynamic = 'force-dynamic';
 
 const META_MENSUAL = 30;
+
+/**
+ * Cuantos ejercicios son una sesion. La portada muestra ESTO, nunca la cola completa: con 397
+ * vencidos el "plan de hoy" decia "~397 min", o sea seis horas y media, que no es un plan sino
+ * una razon para cerrar la app. El atraso de repeticion espaciada es la falla tipica del
+ * metodo (Chessable lo documenta) y mostrarlo entero en la primera pantalla es su forma extrema.
+ */
+const EJERCICIOS_POR_SESION = 10;
+
+/** La clase de tiempo del plan de entrenamiento. Todo lo que mide esta pagina cuenta esta. */
+const CLASE = 'rapid';
 
 const NOMBRE_THEME: Record<string, string> = {
   pieza_colgada: 'piezas colgadas',
@@ -33,6 +49,41 @@ function saludo(hora: number): string {
   if (hora < 12) return 'Buenos días';
   if (hora < 20) return 'Buenas tardes';
   return 'Buenas noches';
+}
+
+/** Una de las tres tareas del dia. Todas se pueden terminar HOY, y por eso se pueden marcar. */
+function TareaDeHoy({
+  hecha,
+  titulo,
+  detalle,
+  accion,
+}: {
+  hecha: boolean;
+  titulo: string;
+  detalle: string | null;
+  accion: React.ReactNode;
+}) {
+  return (
+    <li
+      className={`flex items-center gap-3.5 rounded-xl border px-4 py-3.5 ${
+        hecha ? 'border-bien/30 bg-bien/[0.08]' : 'border-borde-fuerte bg-panel'
+      }`}
+    >
+      <span
+        aria-hidden
+        className={`flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full text-[13px] font-bold ${
+          hecha ? 'bg-bien text-fondo' : 'border-2 border-acento'
+        }`}
+      >
+        {hecha ? '✓' : ''}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[14.5px] font-medium">{titulo}</p>
+        {detalle ? <p className="mt-0.5 text-[12.5px] text-tenue">{detalle}</p> : null}
+      </div>
+      {accion}
+    </li>
+  );
 }
 
 /** Un bloque cuyo dato todavía no existe: se muestra la forma, no un número inventado. */
@@ -87,37 +138,77 @@ export default async function Portada() {
     openingPerformance(),
   ]);
 
+  // Lecturas que agrega la Fase 1 de la revision. Van con `.catch` porque ninguna es fatal: sin
+  // ellas el bloque se degrada, y una portada caida por un dato de apoyo es peor que una
+  // portada incompleta (misma leccion que /entrenador en la Fase 7).
+  const [derrotaPendiente, jugadasHoy, formatos, msPorEjercicio] = await Promise.all([
+    ultimaDerrotaDeRapida().catch(() => null),
+    rapidasDeHoy().catch(() => 0),
+    formatosDeRapida(mesActual).catch(() => []),
+    medianaPorEjercicioMs().catch(() => null),
+  ]);
+
   const rapidas = resumenMes?.n_rapid ?? 0;
   const totalMes = resumenMes?.n_games ?? 0;
+  const balaMes = resumenMes?.n_bullet ?? 0;
   const avance = Math.min(100, Math.round((rapidas / META_MENSUAL) * 100));
   const faltan = Math.max(0, META_MENSUAL - rapidas);
   const diasDelMes = new Date(Date.UTC(anioActual, mesNumero, 0)).getUTCDate();
   const diasRestantes = Math.max(0, diasDelMes - hoy);
 
-  // La clase con más partidas manda la tendencia de rating: mezclar bullet y rapid en una sola
-  // línea compararía escalas distintas.
-  const totalPorClase = new Map<string, number>();
-  for (const m of meses) totalPorClase.set(m.time_class ?? '', (totalPorClase.get(m.time_class ?? '') ?? 0) + (m.n ?? 0));
-  const claseDominante = [...totalPorClase.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
+  // La meta del DIA se deriva de lo que falta y los dias que quedan. Un "2 partidas" fijo no
+  // cierra con la meta mensual (2 x 30 = 60 contra una meta de 30) y se aprende a ignorar.
+  const metaDeHoy = faltan === 0 ? 0 : Math.max(1, Math.ceil(faltan / Math.max(1, diasRestantes + 1)));
 
+  // El rating grande es SIEMPRE el de rapida. Antes se elegia la clase por volumen sobre las
+  // filas que devolvia `monthlyActivity()`, y con el `limit` por filas esa ventana eran ~8
+  // meses: justo aquellos en que dejo la rapida. El resultado era un "RATING BLITZ" como numero
+  // principal de la pantalla que existe para empujar a jugar rapida.
   const serieRating = meses
-    .filter((m) => m.time_class === claseDominante && m.rating_at_month_end !== null)
+    .filter((m) => m.time_class === CLASE && m.rating_at_month_end !== null)
     .sort((a, b) => (a.month_local ?? '').localeCompare(b.month_local ?? ''))
     .map((m) => m.rating_at_month_end as number);
   const ratingActual = serieRating.at(-1);
   const ratingPrevio = serieRating.at(-2);
   const deltaRating = ratingActual !== undefined && ratingPrevio !== undefined ? ratingActual - ratingPrevio : null;
-  const maximo = claseDominante ? await ratingMaximo(claseDominante) : null;
+  const maximo = await ratingMaximo(CLASE).catch(() => null);
 
   const calendario = (porDia ?? [])
     .filter((d) => d.day_local !== null)
-    .map((d) => ({ dia: Number.parseInt((d.day_local as string).slice(-2), 10), partidas: d.n_games ?? 0 }));
+    .map((d) => ({
+      dia: Number.parseInt((d.day_local as string).slice(-2), 10),
+      partidas: d.n_rapid ?? 0,
+      otras: Math.max(0, (d.n_games ?? 0) - (d.n_rapid ?? 0)),
+    }));
 
+  // La peor apertura, SOLO de rapida: la lista mezclaba las tres clases, asi que "esto no
+  // mejora" podia estar senalando una linea que solo juega en bala.
   const peorApertura = aperturas
-    .filter((a) => (a.n ?? 0) >= 20)
+    .filter((a) => a.time_class === CLASE && (a.n ?? 0) >= 20)
     .sort((a, b) => (a.score_pct_lower ?? 0) - (b.score_pct_lower ?? 0))[0];
 
-  const temasVencidos = porTema.filter((t) => t.n > 0).slice(0, 4);
+  const ejerciciosDeHoy = Math.min(EJERCICIOS_POR_SESION, vencidos);
+  const minutosSesion =
+    msPorEjercicio === null
+      ? null
+      : Math.max(1, Math.round((msPorEjercicio * ejerciciosDeHoy) / 60_000));
+
+  // Las tres tareas del dia, todas terminables HOY. El contador viejo era
+  // `rapidas >= META_MENSUAL && vencidos === 0 ? 2 : 0`: solo podia valer 0 o 2, dependia de la
+  // meta del MES y de la deuda COMPLETA de repeticion espaciada, y seguia diciendo 0/2 despues
+  // de jugar y de entrenar.
+  const tareas = [
+    { hecha: metaDeHoy === 0 || jugadasHoy >= metaDeHoy },
+    { hecha: derrotaPendiente === null },
+    { hecha: ejerciciosDeHoy === 0 },
+  ];
+  const hechas = tareas.filter((t) => t.hecha).length;
+
+  // Solo temas CON NOMBRE. El grupo `theme = null` es el residuo del detector de patrones (202
+  // de los 397 ejercicios), y mostrarlo como "Sin patrón · 202 vencidos" en el bloque de
+  // debilidades es nombrar una debilidad que no existe: es lo que el detector no reconocio, no
+  // algo que el jugador haga mal. Mismo criterio que el panel del entrenador.
+  const temasVencidos = porTema.filter((t) => t.n > 0 && t.theme !== null).slice(0, 4);
   const temaPrincipal = temasVencidos[0];
 
   async function actualizarAhora(): Promise<void> {
@@ -162,84 +253,100 @@ export default async function Portada() {
     >
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="flex min-w-0 flex-col gap-4.5">
-          {/* Plan de hoy: lo que hay que hacer, no lo que pasó. */}
+          {/* Plan de hoy: TRES cosas, todas terminables hoy. La lista va en el orden de lo que
+              mueve el rating: jugar, revisar la derrota, entrenar. Jugar va primero porque es
+              lo que la app existe para proteger, y hasta ahora era la unica tarea sin boton. */}
           <section className="rounded-2xl border border-acento/35 bg-gradient-to-b from-acento/12 to-acento/[0.03] px-5 py-5">
             <div className="flex flex-wrap items-baseline justify-between gap-3">
               <div>
                 <p className="eyebrow text-acento">Tu plan de hoy</p>
                 <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em]">
-                  {vencidos > 0 || faltan > 0 ? 'Dos cosas y quedas al día' : 'Estás al día'}
+                  {hechas === tareas.length ? 'Listo por hoy' : 'Tres cosas y quedas al día'}
                 </h2>
               </div>
               <div className="text-right">
                 <p className="text-[22px] font-semibold tabular-nums">
-                  {rapidas >= META_MENSUAL && vencidos === 0 ? 2 : 0}
-                  <span className="text-sm text-tenue"> / 2</span>
+                  {hechas}
+                  <span className="text-sm text-tenue"> / {tareas.length}</span>
                 </p>
-                <p className="mt-0.5 font-mono text-[11px] text-tenue">completado</p>
+                <p className="mt-0.5 font-mono text-[11px] text-tenue">hoy</p>
               </div>
             </div>
 
             <ol className="mt-4.5 flex list-none flex-col gap-2.5 p-0">
-              <li
-                className={`flex items-center gap-3.5 rounded-xl border px-4 py-3.5 ${
-                  vencidos > 0 ? 'border-borde-fuerte bg-panel' : 'border-bien/30 bg-bien/[0.08]'
-                }`}
-              >
-                <span
-                  aria-hidden
-                  className={`flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full text-[13px] font-bold ${
-                    vencidos > 0 ? 'border-2 border-acento' : 'bg-bien text-fondo'
-                  }`}
-                >
-                  {vencidos > 0 ? '' : '✓'}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[14.5px] font-medium">
-                    {vencidos > 0
-                      ? `${vencidos} ejercicios vencidos${temaPrincipal ? `, ${temaPrincipal.n} de ${NOMBRE_THEME[temaPrincipal.theme ?? ''] ?? 'patrón sin clasificar'}` : ''}`
-                      : 'Sin ejercicios pendientes'}
-                  </p>
-                  {vencidos > 0 ? (
-                    <p className="mt-1 font-mono text-[11.5px] text-tenue">
-                      ~{Math.max(1, Math.round(vencidos))} min
-                    </p>
-                  ) : null}
-                </div>
-                {vencidos > 0 ? (
-                  <Link
-                    href="/entrenador"
-                    className="shrink-0 rounded-lg bg-acento px-3.5 py-2 text-[12.5px] font-semibold text-fondo"
-                  >
-                    Entrenar
-                  </Link>
-                ) : null}
-              </li>
+              <TareaDeHoy
+                hecha={tareas[0]?.hecha ?? false}
+                titulo={
+                  metaDeHoy === 0
+                    ? 'Meta del mes cumplida'
+                    : `Jugar ${metaDeHoy} ${metaDeHoy === 1 ? 'partida' : 'partidas'} de rápida`
+                }
+                detalle={
+                  metaDeHoy === 0
+                    ? `${rapidas} de rápida este mes. Sigue jugando.`
+                    : `Llevas ${jugadasHoy} hoy · ${rapidas} de ${META_MENSUAL} este mes, y quedan ${diasRestantes} días.`
+                }
+                accion={
+                  metaDeHoy === 0 ? null : (
+                    <a
+                      href="https://www.chess.com/play/online"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="shrink-0 rounded-lg bg-acento px-3.5 py-2 text-[12.5px] font-semibold text-fondo"
+                    >
+                      Jugar ↗
+                    </a>
+                  )
+                }
+              />
 
-              <li
-                className={`flex items-center gap-3.5 rounded-xl border px-4 py-3.5 ${
-                  faltan > 0 ? 'border-borde bg-panel' : 'border-bien/30 bg-bien/[0.08]'
-                }`}
-              >
-                <span
-                  aria-hidden
-                  className={`flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full text-[13px] font-bold ${
-                    faltan > 0 ? 'border-2 border-borde-fuerte' : 'bg-bien text-fondo'
-                  }`}
-                >
-                  {faltan > 0 ? '' : '✓'}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[14.5px] font-medium">
-                    {faltan > 0 ? `Jugar ${Math.min(2, faltan)} partidas de rápida` : 'Meta del mes cumplida'}
-                  </p>
-                  <p className="mt-0.5 text-[12.5px] text-tenue">
-                    {faltan > 0
-                      ? `Te faltan ${faltan} para la meta del mes y quedan ${diasRestantes} días.`
-                      : `${rapidas} de rápida este mes. Sigue jugando.`}
-                  </p>
-                </div>
-              </li>
+              <TareaDeHoy
+                hecha={tareas[1]?.hecha ?? false}
+                titulo={
+                  derrotaPendiente
+                    ? `Revisar tu derrota contra ${derrotaPendiente.opp_username}`
+                    : 'Ninguna derrota de rápida por revisar'
+                }
+                detalle={
+                  derrotaPendiente
+                    ? `${formatTimeControl(derrotaPendiente.time_control)} · con ${derrotaPendiente.my_color === 'white' ? 'blancas' : 'negras'} · ${new Intl.DateTimeFormat('es-CL', { timeZone: 'America/Santiago', day: 'numeric', month: 'short' }).format(new Date(derrotaPendiente.end_time))}`
+                    : 'Al día con el ritual: toda derrota se analiza.'
+                }
+                accion={
+                  derrotaPendiente ? (
+                    <Link
+                      href={`/partida/${derrotaPendiente.id}`}
+                      className="shrink-0 rounded-lg border border-borde-fuerte px-3.5 py-2 text-[12.5px] font-semibold"
+                    >
+                      Revisar
+                    </Link>
+                  ) : null
+                }
+              />
+
+              <TareaDeHoy
+                hecha={tareas[2]?.hecha ?? false}
+                titulo={
+                  ejerciciosDeHoy > 0
+                    ? `${ejerciciosDeHoy} ejercicios${temaPrincipal ? `, ${Math.min(ejerciciosDeHoy, temaPrincipal.n)} de ${NOMBRE_THEME[temaPrincipal.theme ?? ''] ?? 'patrón sin clasificar'}` : ''}`
+                    : 'Sin ejercicios pendientes'
+                }
+                detalle={
+                  ejerciciosDeHoy > 0 && minutosSesion !== null
+                    ? `~${minutosSesion} min, medido con tus propios intentos.`
+                    : null
+                }
+                accion={
+                  ejerciciosDeHoy > 0 ? (
+                    <Link
+                      href="/entrenador"
+                      className="shrink-0 rounded-lg bg-acento px-3.5 py-2 text-[12.5px] font-semibold text-fondo"
+                    >
+                      Entrenar
+                    </Link>
+                  ) : null
+                }
+              />
             </ol>
           </section>
 
@@ -247,12 +354,33 @@ export default async function Portada() {
               no existe. Se muestra la forma del bloque y se dice qué falta, en vez de inventar. */}
           <section className="grid gap-3.5 md:grid-cols-2">
             <div className="rounded-[14px] border border-borde bg-panel px-4.5 py-4">
-              <p className="eyebrow text-bien">Estás mejorando</p>
+              <p className="eyebrow text-bien">Tu rápida contra tu propio máximo</p>
               <div className="mt-3.5">
-                <PendienteDeDatos>
-                  Comparar mes contra mes necesita una derivación que todavía no está construida.
-                  Mientras tanto, la evolución completa está en Errores y en Aperturas.
-                </PendienteDeDatos>
+                {ratingActual !== undefined && maximo ? (
+                  <>
+                    <div className="flex items-baseline justify-between gap-3 text-[13.5px]">
+                      <span>Hoy</span>
+                      <span className="font-mono tabular-nums">{ratingActual.toLocaleString('es-CL')}</span>
+                    </div>
+                    <div className="mt-1.5">
+                      <Progreso
+                        valor={Math.min(100, (ratingActual / maximo) * 100)}
+                        tono={ratingActual >= maximo ? 'bien' : 'acento'}
+                        alto="h-1.5"
+                      />
+                    </div>
+                    <p className="mt-2 text-[12.5px] text-tenue">
+                      Tu máximo es {maximo.toLocaleString('es-CL')}
+                      {ratingActual < maximo
+                        ? `, o sea ${(maximo - ratingActual).toLocaleString('es-CL')} puntos arriba. Lo alcanzaste el mes en que más rápida jugaste.`
+                        : '. Estás en tu mejor momento.'}
+                    </p>
+                  </>
+                ) : (
+                  <PendienteDeDatos>
+                    Aparece cuando haya al menos un mes con partidas de rápida.
+                  </PendienteDeDatos>
+                )}
               </div>
             </div>
             <div className="rounded-[14px] border border-borde bg-panel px-4.5 py-4">
@@ -298,15 +426,6 @@ export default async function Portada() {
             </div>
           </section>
 
-          <Panel
-            title="No lo olvides jugando"
-            subtitle="Recordatorios sacados de tus últimas partidas"
-          >
-            <PendienteDeDatos>
-              Todavía no está construida la derivación que convierte tus patrones de error en
-              recordatorios. El bloque queda armado para cuando lo esté.
-            </PendienteDeDatos>
-          </Panel>
         </div>
 
         <div className="flex flex-col gap-4">
@@ -326,9 +445,29 @@ export default async function Portada() {
             <div className="mt-3.5">
               <Progreso valor={avance} />
             </div>
-            <p className="mb-4 mt-2.5 text-[12.5px] text-tenue">
-              {totalMes} partidas en total este mes.
-            </p>
+            {/* El numero que no tenia nombre. 436 de bala en un mes con 15 de rapida salian
+                como "455 partidas en total" en gris chico: la unica cifra del mes sin etiqueta,
+                y justo la que el plan de entrenamiento prohibe. Va el hecho, sin castigo y sin
+                racha. */}
+            <div className="mb-4 mt-2.5 space-y-1 text-[12.5px] text-tenue">
+              {formatos.length > 0 ? (
+                <p>
+                  {formatos.map((f, i) => (
+                    <span key={f.timeControl}>
+                      {i > 0 ? ' · ' : ''}
+                      <span className="tabular-nums">{f.n}</span> en {formatTimeControl(f.timeControl)}
+                    </span>
+                  ))}
+                </p>
+              ) : null}
+              {balaMes > 0 ? (
+                <p className="text-apagado">
+                  <span className="tabular-nums text-tenue">{balaMes}</span> de bala este mes. Tu
+                  plan dice cero hasta 1500.
+                </p>
+              ) : null}
+              <p className="text-apagado">{totalMes} partidas en total, de todas las clases.</p>
+            </div>
             {porDia === null ? (
               <PendienteDeDatos>
                 El calendario necesita la vista <code>v_games_by_day</code>, que agrega la
@@ -340,7 +479,7 @@ export default async function Portada() {
           </section>
 
           <section className="rounded-[14px] border border-borde bg-panel px-5 py-4.5">
-            <p className="eyebrow">Rating {claseDominante}</p>
+            <p className="eyebrow">Rating de rápida</p>
             <div className="mt-1.5 flex items-baseline gap-2.5">
               <span className="text-[30px] font-semibold tracking-[-0.03em] tabular-nums">
                 {ratingActual?.toLocaleString('es-CL') ?? '—'}
@@ -361,35 +500,6 @@ export default async function Portada() {
               <div className="mt-3">
                 <Sparkline valores={serieRating} alto={64} area tono="acento" />
               </div>
-            ) : null}
-          </section>
-
-          <section className="rounded-[14px] border border-borde bg-panel px-5 py-4.5">
-            <div className="flex items-baseline justify-between gap-2">
-              <p className="eyebrow">Lo próximo que vence</p>
-              <span className="font-mono text-[11.5px] text-apagado">repetición espaciada</span>
-            </div>
-            {temasVencidos.length > 0 ? (
-              <ul className="mt-3.5 flex list-none flex-col gap-2.5 p-0 text-[13px]">
-                {temasVencidos.map((t) => (
-                  <li key={t.theme ?? 'null'} className="flex items-center justify-between gap-2.5">
-                    <span>
-                      {t.n} {NOMBRE_THEME[t.theme ?? ''] ?? 'sin patrón'}
-                    </span>
-                    <Badge tono="critico">hoy</Badge>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="mt-3.5 text-[13px] text-tenue">Nada vencido. Vuelve cuando toque el repaso.</p>
-            )}
-            {vencidos > 0 ? (
-              <Link
-                href="/entrenador"
-                className="mt-4 block rounded-[9px] bg-acento py-2.5 text-center text-[13px] font-semibold text-fondo"
-              >
-                Entrenar {vencidos} {vencidos === 1 ? 'posición' : 'posiciones'}
-              </Link>
             ) : null}
           </section>
 

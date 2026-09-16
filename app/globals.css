@@ -23,7 +23,11 @@
   --color-texto: #e8ece9;
   --color-texto-suave: #c3ccc7;
   --color-tenue: #8d9a93;
-  --color-apagado: #5e6b65;
+  /* #5e6b65 daba 3,26:1 sobre --color-panel y 2,99:1 sobre --color-panel-alto, bajo el minimo
+     AA de 4,5:1, y se usa en texto de 10,5-11 px: ejes de graficos, `.eyebrow`, calendario,
+     leyendas. Este pasa 5,11:1 y 4,69:1, y sigue siendo un escalon por debajo de --color-tenue
+     (6,21:1), asi que la jerarquia de cuatro niveles de tinta se mantiene. */
+  --color-apagado: #7e8b84;
 
   /* Acento de marca: coral. Botones primarios, links, elemento activo. */
   --color-acento: #d9603f;
