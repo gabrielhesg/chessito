@@ -46,6 +46,7 @@ export type Database = {
           mistakes: number | null
           inaccuracies: number | null
           created_at: string
+          skip_reason: string | null
         }
         Insert: {
           id?: number
@@ -83,6 +84,7 @@ export type Database = {
           mistakes?: number | null
           inaccuracies?: number | null
           created_at?: string
+          skip_reason?: string | null
         }
         Update: {
           id?: number
@@ -120,6 +122,7 @@ export type Database = {
           mistakes?: number | null
           inaccuracies?: number | null
           created_at?: string
+          skip_reason?: string | null
         }
         Relationships: [
           {
@@ -444,6 +447,19 @@ export type Database = {
         }
         Relationships: []
       }
+      v_cobertura_analisis: {
+        Row: {
+          time_class: string | null
+          n_games: number | null
+          n_analyzed: number | null
+          n_pending: number | null
+          n_claimed: number | null
+          n_failed: number | null
+          n_skipped: number | null
+          n_analizables: number | null
+        }
+        Relationships: []
+      }
       v_conceptos_fallados: {
         Row: {
           concepto: string | null
@@ -461,6 +477,16 @@ export type Database = {
           primeros: number | null
           aciertos: number | null
           ultimo: string | null
+        }
+        Relationships: []
+      }
+      v_conceptos_panel: {
+        Row: {
+          concepto: string | null
+          intentos: number | null
+          ejercicios: number | null
+          ultimo: string | null
+          es_residuo: boolean | null
         }
         Relationships: []
       }
@@ -512,6 +538,17 @@ export type Database = {
           n_skipped: number | null
           first_game: string | null
           last_game: string | null
+        }
+        Relationships: []
+      }
+      v_games_para_refase: {
+        Row: {
+          id: number | null
+          pgn: string | null
+          my_color: Database["public"]["Enums"]["game_color"] | null
+          base_seconds: number | null
+          increment_secs: number | null
+          opening_ply_count: number | null
         }
         Relationships: []
       }

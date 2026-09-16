@@ -54,8 +54,17 @@ export class AnalysisStore {
 
   /**
    * Reclama un lote con `update ... returning` sobre una subconsulta `for update skip locked`:
-   * `pending`, o `claimed` hace mas de 30 minutos (recuperacion de huerfanas). Rapida y blitz
-   * primero, de la mas reciente hacia atras (docs/ANALYSIS-SPEC.md, maquina de estados).
+   * `pending`, o `claimed` hace mas de 30 minutos (recuperacion de huerfanas).
+   *
+   * **Rapida primero, despues blitz, y recien despues el resto**, de la mas reciente hacia
+   * atras (docs/ANALYSIS-SPEC.md, maquina de estados).
+   *
+   * El orden viejo era `(time_class in ('rapid','blitz')) desc`, que dejaba rapida y blitz
+   * EMPATADAS en la primera clave y le pasaba la decision a `end_time`. Como el historico
+   * reciente es casi todo blitz y bala, el motor gasto ahi su presupuesto: 1.674 partidas de
+   * blitz analizadas contra 108 de rapida, medido en produccion. Y tanto `/errores` como el
+   * panel de conceptos filtran rapida por decision explicita de la Fase 12, asi que ese
+   * analisis no le sirve a ninguna pantalla. Ver docs/review/00-inventario.md seccion 3.4.
    */
   async claimBatch(limit: number): Promise<ClaimedGame[]> {
     const client = await this.connect();
@@ -68,7 +77,7 @@ export class AnalysisStore {
                analysis_state = 'pending'
                or (analysis_state = 'claimed' and claimed_at < now() - interval '30 minutes')
              )
-           order by (time_class in ('rapid', 'blitz')) desc, end_time desc
+           order by (time_class = 'rapid') desc, (time_class = 'blitz') desc, end_time desc
            limit $1
            for update skip locked
         )

@@ -47,7 +47,7 @@ export function buildMoveRows(input: BuildMoveRowsInput): MoveRow[] {
       phase: classifyPhase({
         ply: move.ply,
         openingPlyCount: input.openingPlyCount,
-        piecesAfter: move.piecesAfter,
+        materialAfter: move.materialAfter,
       }),
       clock_ms: move.clockMs,
       move_time_ms: times[index] ?? null,

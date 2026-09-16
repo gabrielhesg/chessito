@@ -81,23 +81,47 @@ describe('isBookMove', () => {
 });
 
 describe('classifyPhase', () => {
-  const fullBoard = { white: 7, black: 7 };
+  /** D + 2T + 2A + 2C = 9 + 10 + 6 + 6 = 31 por bando. */
+  const materialInicial = { white: 31, black: 31 };
 
   it('fase 0 mientras dure la apertura reconocida, aunque pase el ply 20', () => {
-    expect(classifyPhase({ ply: 24, openingPlyCount: 26, piecesAfter: fullBoard })).toBe(0);
+    expect(classifyPhase({ ply: 24, openingPlyCount: 26, materialAfter: materialInicial })).toBe(0);
   });
 
   it('fase 0 hasta el ply 20 aunque la apertura reconocida sea mas corta', () => {
-    expect(classifyPhase({ ply: 12, openingPlyCount: 6, piecesAfter: fullBoard })).toBe(0);
-    expect(classifyPhase({ ply: 20, openingPlyCount: 6, piecesAfter: fullBoard })).toBe(0);
+    expect(classifyPhase({ ply: 12, openingPlyCount: 6, materialAfter: materialInicial })).toBe(0);
+    expect(classifyPhase({ ply: 20, openingPlyCount: 6, materialAfter: materialInicial })).toBe(0);
   });
 
   it('fase 1 (medio juego) pasado el limite de apertura, con material completo', () => {
-    expect(classifyPhase({ ply: 22, openingPlyCount: 6, piecesAfter: fullBoard })).toBe(1);
+    expect(classifyPhase({ ply: 22, openingPlyCount: 6, materialAfter: materialInicial })).toBe(1);
   });
 
-  it('fase 2 (final) cuando ambos bandos quedan con 6 piezas o menos sin contar peones ni reyes', () => {
-    expect(classifyPhase({ ply: 40, openingPlyCount: 6, piecesAfter: { white: 6, black: 6 } })).toBe(2);
-    expect(classifyPhase({ ply: 40, openingPlyCount: 6, piecesAfter: { white: 7, black: 6 } })).toBe(1);
+  it('un solo cambio de piezas por bando NO convierte la partida en un final', () => {
+    // Es exactamente el caso que rompia el criterio viejo (<=6 piezas por bando): cambiar un
+    // caballo dejaba 6 y 6 y la partida pasaba a "final" en la jugada 12.
+    const trasCambiarCaballos = { white: 28, black: 28 };
+    expect(classifyPhase({ ply: 24, openingPlyCount: 6, materialAfter: trasCambiarCaballos })).toBe(1);
+  });
+
+  it('torre y pieza menor por bando siguen siendo medio juego', () => {
+    // 5 + 3 = 8 por bando, 16 en total: sobre el umbral de 13.
+    expect(classifyPhase({ ply: 40, openingPlyCount: 6, materialAfter: { white: 8, black: 8 } })).toBe(1);
+  });
+
+  it('fase 2 (final) cuando el material no-peon de los DOS bandos suma 13 o menos', () => {
+    // Torre contra torre: 5 + 5 = 10.
+    expect(classifyPhase({ ply: 40, openingPlyCount: 6, materialAfter: { white: 5, black: 5 } })).toBe(2);
+    // Torre y alfil contra torre: 8 + 5 = 13, justo en el umbral.
+    expect(classifyPhase({ ply: 40, openingPlyCount: 6, materialAfter: { white: 8, black: 5 } })).toBe(2);
+    // Un punto mas y todavia no es final: 9 + 5 = 14.
+    expect(classifyPhase({ ply: 40, openingPlyCount: 6, materialAfter: { white: 9, black: 5 } })).toBe(1);
+    // Reyes y peones: 0.
+    expect(classifyPhase({ ply: 60, openingPlyCount: 6, materialAfter: { white: 0, black: 0 } })).toBe(2);
+  });
+
+  it('damas todavia en el tablero no es final, aunque queden pocas piezas', () => {
+    // Dama contra dama: 9 + 9 = 18.
+    expect(classifyPhase({ ply: 40, openingPlyCount: 6, materialAfter: { white: 9, black: 9 } })).toBe(1);
   });
 });

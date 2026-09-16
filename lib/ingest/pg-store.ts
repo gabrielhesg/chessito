@@ -45,6 +45,7 @@ const GAME_COLUMNS = [
   'ply_count',
   'pgn',
   'analysis_state',
+  'skip_reason',
 ] as const;
 
 export class PgIngestStore implements IngestStore {
@@ -84,7 +85,13 @@ export class PgIngestStore implements IngestStore {
 
     // El upsert NO pisa analysis_state ni las columnas del motor: reingerir una partida ya
     // analizada no puede borrar su analisis. Por eso la ingesta es idempotente de verdad.
-    const updates = GAME_COLUMNS.filter((c) => c !== 'chesscom_uuid' && c !== 'analysis_state')
+    // `skip_reason` va con el estado por la misma razon, y ademas por una propia: el motivo
+    // `sin_jugadas` lo pone `moves:extract`, no el mapeo, asi que un upsert que lo pisara
+    // dejaria la partida en `skipped` SIN motivo, que es exactamente el bug que la revision
+    // integral reparo.
+    const updates = GAME_COLUMNS.filter(
+      (c) => c !== 'chesscom_uuid' && c !== 'analysis_state' && c !== 'skip_reason',
+    )
       .map((c) => `${c} = excluded.${c}`)
       .join(', ');
 
@@ -225,7 +232,58 @@ export class PgIngestStore implements IngestStore {
 
   async markMovesEmpty(gameId: number): Promise<void> {
     const client = await this.connect();
-    await client.query("update games set analysis_state = 'skipped' where id = $1", [gameId]);
+    await client.query(
+      "update games set analysis_state = 'skipped', skip_reason = 'sin_jugadas' where id = $1",
+      [gameId],
+    );
+  }
+
+  async loadGamesForRephase(desdeId: number, limite: number): Promise<GameForMoves[]> {
+    const client = await this.connect();
+    const res = await client.query<{
+      id: number;
+      pgn: string;
+      my_color: 'white' | 'black';
+      base_seconds: number;
+      increment_secs: number;
+      opening_ply_count: number | null;
+    }>(
+      // `g.id` es bigserial y node-pg devuelve los bigint como texto: el `::int` es lo que
+      // hace que `GameForMoves.id` sea de verdad un number, como dice su tipo.
+      `select g.id::int as id, g.pgn, g.my_color, g.base_seconds, g.increment_secs,
+              o.ply_count as opening_ply_count
+         from games g
+         left join openings o on o.id = g.opening_id
+        where g.id > $1
+          and exists (select 1 from moves m where m.game_id = g.id)
+        order by g.id
+        limit $2`,
+      [desdeId, limite],
+    );
+    return res.rows.map((row) => ({
+      id: row.id,
+      pgn: row.pgn,
+      myColor: row.my_color,
+      baseSeconds: row.base_seconds,
+      incrementSecs: row.increment_secs,
+      openingPlyCount: row.opening_ply_count ?? 0,
+    }));
+  }
+
+  async updateMovePhases(gameId: number, fases: { ply: number; phase: 0 | 1 | 2 }[]): Promise<number> {
+    if (fases.length === 0) return 0;
+    const client = await this.connect();
+    // Un solo update por partida con `unnest`, y `phase is distinct from` para que las filas
+    // afectadas sean exactamente las que cambiaron de valor: es lo que hace medible la
+    // idempotencia sin tener que leer antes.
+    const res = await client.query(
+      `update moves m
+          set phase = f.phase
+         from unnest($2::smallint[], $3::smallint[]) as f(ply, phase)
+        where m.game_id = $1 and m.ply = f.ply and m.phase is distinct from f.phase`,
+      [gameId, fases.map((f) => f.ply), fases.map((f) => f.phase)],
+    );
+    return res.rowCount ?? 0;
   }
 
   async close(): Promise<void> {

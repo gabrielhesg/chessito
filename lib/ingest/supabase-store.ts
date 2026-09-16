@@ -166,8 +166,58 @@ export class SupabaseIngestStore implements IngestStore {
   }
 
   async markMovesEmpty(gameId: number): Promise<void> {
-    const { error } = await this.client.from('games').update({ analysis_state: 'skipped' }).eq('id', gameId);
+    const { error } = await this.client
+      .from('games')
+      .update({ analysis_state: 'skipped', skip_reason: 'sin_jugadas' })
+      .eq('id', gameId);
     if (error) throw new Error(`No se pudo marcar skipped la partida ${gameId}: ${error.message}`);
+  }
+
+  async loadGamesForRephase(desdeId: number, limite: number): Promise<GameForMoves[]> {
+    // `v_games_para_refase` (migracion 0011) hace el `exists (select 1 from moves ...)` que
+    // PostgREST no puede expresar, igual que `v_games_pending_moves` hace el suyo.
+    const { data, error } = await this.client
+      .from('v_games_para_refase')
+      .select('id, pgn, my_color, base_seconds, increment_secs, opening_ply_count')
+      .gt('id', desdeId)
+      .order('id', { ascending: true })
+      .limit(limite);
+    if (error) throw new Error(`No se pudieron leer las partidas para refase: ${error.message}`);
+    return (data ?? []).map((row) => {
+      if (row.id === null || row.pgn === null || row.base_seconds === null || row.increment_secs === null) {
+        throw new Error(`Fila incompleta en v_games_para_refase: ${JSON.stringify(row)}`);
+      }
+      return {
+        id: row.id,
+        pgn: row.pgn,
+        myColor: row.my_color as 'white' | 'black',
+        baseSeconds: row.base_seconds,
+        incrementSecs: row.increment_secs,
+        openingPlyCount: row.opening_ply_count ?? 0,
+      };
+    });
+  }
+
+  async updateMovePhases(gameId: number, fases: { ply: number; phase: 0 | 1 | 2 }[]): Promise<number> {
+    if (fases.length === 0) return 0;
+    // PostgREST no tiene un update fila a fila con valores distintos, pero `phase` solo puede
+    // valer 0, 1 o 2: tres updates con `in(ply, ...)` cubren la partida entera. Este camino
+    // existe por la regla de las dos implementaciones; el script usa `PgIngestStore`, que
+    // mueve cientos de miles de filas y cuesta una fraccion.
+    let tocadas = 0;
+    for (const phase of [0, 1, 2] as const) {
+      const plies = fases.filter((f) => f.phase === phase).map((f) => f.ply);
+      if (plies.length === 0) continue;
+      const { error, count } = await this.client
+        .from('moves')
+        .update({ phase }, { count: 'exact' })
+        .eq('game_id', gameId)
+        .in('ply', plies)
+        .neq('phase', phase);
+      if (error) throw new Error(`No se pudo actualizar la fase de la partida ${gameId}: ${error.message}`);
+      tocadas += count ?? 0;
+    }
+    return tocadas;
   }
 
   close(): Promise<void> {
