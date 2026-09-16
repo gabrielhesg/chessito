@@ -138,8 +138,9 @@ En este orden:
 
 1. **Aplicar la migración 0011** con el workflow `migraciones` (o `pnpm db:push`). Sin ella,
    `/errores`, `/entrenador` y la portada leen vistas que no existen.
-2. **Correr `pnpm moves:rephase`** una vez. Hasta que corra, `/errores` y `/reloj` siguen
-   mostrando la distribución de fases vieja: el código está arreglado y los datos no.
+2. **Correr `moves:rephase`** una vez, con el workflow **`moves` en modo `refasear`** (se dispara
+   desde el celular, como todo lo demás). Hasta que corra, `/errores` y `/reloj` siguen mostrando
+   la distribución de fases vieja: el código está arreglado y los datos no.
 3. **Correr `pnpm db:types`** contra la base real, para que los tipos generados salgan de ahí y
    no del Postgres local.
 4. **Disparar el análisis** desde `/salud`. Con 0011 aplicada hay ~2.480 partidas de rápida en

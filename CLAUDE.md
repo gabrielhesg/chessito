@@ -819,7 +819,7 @@ Cada uno se agrega a `package.json` en el fase que lo crea.
 | `pnpm openings:load` | `scripts/load-openings.ts`, carga los TSV de Lichess. Acepta `--from-dir` donde la red bloquea raw.githubusercontent.com. Tambien es el workflow `openings`, para operar sin terminal | Fase 1 |
 | `pnpm ingest` | `scripts/ingest.ts`, mismo `runIngest` que la ruta de cron. `--full` para todo el histórico | Fase 1 |
 | `pnpm moves:extract` | `scripts/extract-moves.ts`, puebla `moves` desde el PGN | Fase 2 |
-| `pnpm moves:rephase` | `scripts/rephase-moves.ts`, re-deriva `moves.phase` desde el PGN. Idempotente (la segunda corrida reporta 0 cambiadas) y reanudable con `--desde <id>`. Solo escribe esa columna | Revisión, Fase 1 |
+| `pnpm moves:rephase` | `scripts/rephase-moves.ts`, re-deriva `moves.phase` desde el PGN. Idempotente (la segunda corrida reporta 0 cambiadas) y reanudable con `--desde <id>`. Solo escribe esa columna. Tambien es el workflow `moves` en modo `refasear`, para operar sin terminal | Revisión, Fase 1 |
 | `pnpm analyze` | `scripts/analyze.ts`, el analizador con Stockfish nativo. Lo corre GitHub Actions, y también sirve en local | Fase 3 |
 | `pnpm puzzles:build` | `scripts/build-puzzles.ts`, genera ejercicios | Fase 4 |
 
@@ -1014,6 +1014,11 @@ peones ni reyes y al inicio cada bando tiene SIETE. El error venia del punto 5 d
 que estan medidas y tabuladas en el comentario de `lib/chess/phase.ts`. Sobre 60 partidas reales
 de rapida: el final cae de 66,5% a 16,7% de los plies y el medio juego sube a 54,2%.
 `ParsedMove.piecesAfter` paso a llamarse `materialAfter` y trae puntos, no conteo.
+
+**`moves:rephase` vive en el workflow `moves`, no en uno propio.** Los dos modos —`extraer` y
+`refasear`— trabajan sobre la misma tabla y comparten secretos, ambiente y pasos: un workflow
+aparte habria sido un archivo duplicado. `ingest.yml` sigue encadenando `moves:extract` y nunca
+`refasear`: re-derivar el historico completo no es parte de una ingesta.
 
 **`pnpm moves:rephase` solo escribe `phase`.** Las evaluaciones del motor cuestan horas de Actions
 y no se reconstruyen desde el PGN. Es idempotente y la idempotencia es MEDIBLE: `updateMovePhases`
