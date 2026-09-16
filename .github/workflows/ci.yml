@@ -47,12 +47,16 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # Esta suite es la que hace cumplir "la CI falla si algun chequeo de v_data_quality da
-      # false": levanta el esquema real, ingiere los fixtures y exige los diez en verde.
+      # false": levanta el esquema real, ingiere los fixtures y los exige todos en verde.
       # Corre siempre, sin depender de ningun secreto.
+      #
+      # `revision.integration.test.ts` prueba los cuatro chequeos que agrego la migracion 0011
+      # EN ROJO, con la forma exacta de los datos que la revision integral encontro en
+      # produccion: un invariante que nunca se probo en rojo no es un invariante.
       - name: Ingesta y chequeos de calidad contra Postgres
         env:
           TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
-        run: pnpm exec vitest run tests/ingest.integration.test.ts tests/extract-moves.integration.test.ts tests/analyze.integration.test.ts tests/sql-functions.integration.test.ts
+        run: pnpm exec vitest run tests/ingest.integration.test.ts tests/extract-moves.integration.test.ts tests/analyze.integration.test.ts tests/sql-functions.integration.test.ts tests/revision.integration.test.ts
 
   # Los mismos diez chequeos, pero contra la base de VERDAD. El job de integracion ya los
   # verifica siempre sobre un Postgres efimero; este agrega el estado real de los datos de
