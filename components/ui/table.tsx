@@ -70,7 +70,7 @@ export function Fila({
   return (
     <tr
       className={`border-b border-borde/60 transition-colors last:border-0 hover:bg-panel-alto ${
-        atenuada ? 'opacity-45' : ''
+        atenuada ? 'opacity-70' : ''
       } ${className}`}
     >
       {children}
@@ -92,7 +92,16 @@ export function Tabla({
     // `overflow-x-auto` sin margen negativo: con `-mx-4` el contenedor queda mas ancho que el
     // panel y el desborde se lo come la pagina entera, que es justo lo que no puede pasar.
     // Solo la tabla scrollea; el cuerpo nunca.
-    <div className="overflow-x-auto">
+    //
+    // El degradado del borde derecho NO es decoracion: con `min-w-[32rem]` estas tablas se
+    // cortan a 390 px en cinco pantallas y no habia ninguna senal de que hubiera mas a la
+    // derecha. En /registro quedaban fuera el resultado y el boton "Analizar"; en /errores, la
+    // columna de TASA, que es justo la que da la conclusion. Se apoya en `scroll-timeline` por
+    // CSS puro y se desvanece al llegar al final; donde el navegador no lo soporta, queda una
+    // pista fija, que sigue siendo mejor que ninguna.
+    <div className="relative">
+      <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-gradient-to-l from-panel to-transparent sm:hidden" />
+      <div className="overflow-x-auto">
       <table className="w-full min-w-[32rem] border-collapse text-sm">
         <thead>
           <tr className="border-b border-borde text-left text-2xs uppercase tracking-wider text-tenue">
@@ -107,7 +116,8 @@ export function Tabla({
           </tr>
         </thead>
         <tbody>{children}</tbody>
-      </table>
+        </table>
+      </div>
     </div>
   );
 }

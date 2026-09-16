@@ -60,7 +60,7 @@ export function BarrasV({
             return (
               <div key={i} className="flex h-full min-w-0 flex-1 items-end" title={d.titulo}>
                 <div
-                  className={`w-full rounded-t bg-acento ${atenuada ? 'opacity-35' : ''}`}
+                  className={`w-full rounded-t bg-acento ${atenuada ? 'opacity-55' : ''}`}
                   style={{ height: `${altura}%` }}
                 />
               </div>

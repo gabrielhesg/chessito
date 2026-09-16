@@ -5,10 +5,31 @@ name: moves
 # hasta ahora se corria a mano con `pnpm moves:extract` en un entorno local, pero la app se
 # opera desde el navegador, asi que hace falta poder dispararla igual que `openings`.
 #
-# Idempotente: `loadGamesForMoves` solo devuelve partidas sin filas en `moves`, asi que
-# correrla de nuevo no encuentra nada pendiente y no hace dano.
+# Dos modos, ambos idempotentes y ambos sobre la MISMA tabla, por eso viven en el mismo
+# workflow en vez de en dos:
+#
+#   extraer  — `pnpm moves:extract`. `loadGamesForMoves` solo devuelve partidas sin filas en
+#              `moves`, asi que correrla de nuevo no encuentra nada pendiente.
+#   refasear — `pnpm moves:rephase`. Re-deriva SOLO la columna `phase` desde el PGN, sin tocar
+#              nada del motor. La segunda corrida reporta `jugadas_cambiadas: 0`, que es como
+#              se comprueba la idempotencia. Lo necesita la Fase 1 de la revision integral: el
+#              criterio de fase cambio (lib/chess/phase.ts) y las 579.194 filas ya escritas
+#              siguen con el viejo hasta que esto corra.
 on:
   workflow_dispatch:
+    inputs:
+      modo:
+        description: 'extraer = jugadas de partidas nuevas; refasear = re-derivar la columna phase del historico'
+        required: false
+        default: 'extraer'
+        type: choice
+        options:
+          - extraer
+          - refasear
+      desde:
+        description: 'Solo para "refasear": id de partida desde el que reanudar una corrida cortada'
+        required: false
+        type: string
 
 jobs:
   extraer:
@@ -22,7 +43,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Extraer jugadas
+      - name: Extraer jugadas o re-derivar la fase
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
@@ -32,4 +53,15 @@ jobs:
           OWNER_EMAIL: ${{ secrets.OWNER_EMAIL }}
           CRON_SECRET: no-aplica-en-actions
           APP_ENV: ${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
-        run: pnpm moves:extract
+          MODO: ${{ inputs.modo }}
+          DESDE: ${{ inputs.desde }}
+        run: |
+          if [ "$MODO" = "refasear" ]; then
+            if [ -n "$DESDE" ]; then
+              pnpm moves:rephase --desde "$DESDE"
+            else
+              pnpm moves:rephase
+            fi
+          else
+            pnpm moves:extract
+          fi

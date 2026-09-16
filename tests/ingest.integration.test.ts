@@ -148,14 +148,16 @@ suite('ingesta contra Postgres real', () => {
     }
   });
 
-  it('los diez chequeos de v_data_quality quedan en verde', async () => {
+  it('los catorce chequeos de v_data_quality quedan en verde', async () => {
     const client = new Client({ connectionString: url });
     await client.connect();
     try {
       const res = await client.query<{ check_name: string; ok: boolean }>(
         'select check_name, ok from v_data_quality',
       );
-      expect(res.rows).toHaveLength(10);
+      // Diez de 0002 mas los cuatro de 0011, que vigilan una familia distinta: no que el
+      // calculo este bien, sino que el numero se calcule sobre la poblacion que declara.
+      expect(res.rows).toHaveLength(14);
       expect(res.rows.filter((r) => !r.ok)).toEqual([]);
     } finally {
       await client.end();

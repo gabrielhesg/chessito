@@ -67,9 +67,11 @@ export function EvalChart({
     { ultima: 50, puntos: [] },
   ).puntos;
 
-  const blunders = puntos.filter(
-    (p) => p.classification === 3 && p.evalCp !== null,
-  );
+  // Solo los errores graves de Gabriel. Antes contaba los de los dos bandos, asi que el pie del
+  // grafico decia "2 errores graves marcados" mientras la tarjeta de arriba decia "GRAVES 1"
+  // (que lee `games.blunders`, siempre propio). Dos numeros distintos para lo mismo en la misma
+  // pantalla es lo que mas rapido destruye la confianza en una app de datos.
+  const blunders = puntos.filter((p) => p.classification === 3 && p.evalCp !== null && p.isMine);
   const xActual = x(plyActual);
 
   return (

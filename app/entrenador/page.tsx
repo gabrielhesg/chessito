@@ -74,18 +74,22 @@ export default async function EntrenadorPage({
     adorno(sessionToday(), []),
   ]);
 
-  const maximo = Math.max(1, ...porTema.map((c) => c.intentos));
-  const patrones = porTema.map((c) => ({
+  // El `n` que decide si el panel se muestra es el de la unidad INDEPENDIENTE: ejercicios
+  // distintos, no intentos. 170 intentos sobre 3 ejercicios son 3 observaciones, y presentar eso
+  // como "te equivocas 170 veces en esto" nombra una debilidad de caracter sobre una muestra de
+  // tres. Es la misma regla del umbral de 20 que el proyecto respeta en todas las tablas, que
+  // aqui nunca se habia aplicado.
+  const MINIMO_EJERCICIOS = 5;
+  const conMuestra = porTema.filter((c) => c.ejercicios >= MINIMO_EJERCICIOS);
+  const maximo = Math.max(1, ...conMuestra.map((c) => c.intentos));
+  const patrones = conMuestra.map((c) => ({
     etiqueta: NOMBRE_CONCEPTO[c.concepto] ?? c.concepto,
     intentos: c.intentos,
     ejercicios: c.ejercicios,
     // La barra es proporcional al que mas repites, no un porcentaje: un porcentaje suelto sin
     // denominador no dice nada, y eso era justo lo que no se entendia del panel anterior.
     pct: (c.intentos / maximo) * 100,
-    // La tasa de acierto vuelve, pero ahora sobre un agrupamiento que significa algo. Solo tiene
-    // sentido sobre el PRIMER intento, igual que SM-2; sin primeros intentos, no se muestra.
-    acierto: c.primeros > 0 ? (c.aciertos / c.primeros) * 100 : null,
-    primeros: c.primeros,
+    esResiduo: c.esResiduo,
     detalle: TEXTO_CONCEPTO[c.concepto as Concepto] ?? '',
   }));
 

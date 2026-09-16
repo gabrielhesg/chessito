@@ -67,11 +67,15 @@ export function BarrasH({
         {datos.map((d, i) => (
           <li
             key={i}
-            className={`flex items-center gap-3 ${d.atenuada ? 'opacity-45' : ''}`}
+            className={`flex items-center gap-3 ${d.atenuada ? 'opacity-70' : ''}`}
             title={d.titulo}
           >
+            {/* La etiqueta se parte en dos lineas en vez de truncarse. Con `truncate`, a 390 px
+                dos aperturas distintas podian salir como "Scandinavian Defens… 30%" y
+                "Scandinavian Defens… 30%": indistinguibles, y el `title=` que las separaba no
+                abre con tap en celular. Dos lineas caben; una etiqueta ilegible no sirve. */}
             <span
-              className={`${anchoEtiqueta} shrink-0 truncate text-xs`}
+              className={`${anchoEtiqueta} shrink-0 text-xs leading-tight [overflow-wrap:anywhere]`}
               title={typeof d.etiqueta === 'string' ? d.etiqueta : undefined}
             >
               {d.etiqueta}

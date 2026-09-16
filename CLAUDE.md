@@ -819,6 +819,7 @@ Cada uno se agrega a `package.json` en el fase que lo crea.
 | `pnpm openings:load` | `scripts/load-openings.ts`, carga los TSV de Lichess. Acepta `--from-dir` donde la red bloquea raw.githubusercontent.com. Tambien es el workflow `openings`, para operar sin terminal | Fase 1 |
 | `pnpm ingest` | `scripts/ingest.ts`, mismo `runIngest` que la ruta de cron. `--full` para todo el histórico | Fase 1 |
 | `pnpm moves:extract` | `scripts/extract-moves.ts`, puebla `moves` desde el PGN | Fase 2 |
+| `pnpm moves:rephase` | `scripts/rephase-moves.ts`, re-deriva `moves.phase` desde el PGN. Idempotente (la segunda corrida reporta 0 cambiadas) y reanudable con `--desde <id>`. Solo escribe esa columna. Tambien es el workflow `moves` en modo `refasear`, para operar sin terminal | Revisión, Fase 1 |
 | `pnpm analyze` | `scripts/analyze.ts`, el analizador con Stockfish nativo. Lo corre GitHub Actions, y también sirve en local | Fase 3 |
 | `pnpm puzzles:build` | `scripts/build-puzzles.ts`, genera ejercicios | Fase 4 |
 
@@ -963,3 +964,114 @@ patron" — pero ahora que el agrupamiento significa algo, vuelve: `v_conceptos_
 cuenta tambien `primeros` y `aciertos`. La regla que deja esto: un dato no se borra porque se vea
 mal, se borra cuando se puede demostrar que no significa nada, y si despues vuelve a significar
 algo, se repone.
+
+## Estado al terminar la Fase 1 de la revision integral
+
+Una revision integral (`docs/review/`) midio la app contra el historico real y encontro que el
+backend esta sano pero la medicion apuntaba al lugar equivocado. Su plan completo, con las cuatro
+fases y sus prompts, vive en `docs/review/PLAN-REVISION.md`; lo construido y lo que quedo fuera,
+en `docs/review/BITACORA.md`. Una migracion nueva (`0011_revision_integral.sql`), ninguna pagina
+nueva.
+
+| Pieza | Donde |
+|---|---|
+| Motivo de la exclusion del analisis | `games.skip_reason`, poblada en `mapGame` (`lib/chess/game.ts`) |
+| Cobertura que suma su propio total | `v_cobertura_analisis` (0011), reemplaza a `v_analysis_coverage` |
+| Re-derivacion de la fase | `pnpm moves:rephase` (`scripts/rephase-moves.ts`, `lib/ingest/rephase-moves.ts`) |
+| Panel de patrones sin la tasa imposible | `v_conceptos_panel` (0011), reemplaza a `v_conceptos_fallados_rapida` |
+| Cuatro chequeos de representatividad | `v_data_quality` extendida en 0011, probados en rojo en `tests/revision.integration.test.ts` |
+
+**La clase de tiempo se elige por intencion, no por volumen.** Era la misma decision detras de
+nueve hallazgos de las tres visiones. El calendario de la portada cuenta `n_rapid` y no
+`n_games` (con 436 partidas de bala y 15 de rapida en el mes, los quince dias jugados salian
+verdes); el rating grande es el de rapida y no la clase dominante (que daba "RATING BLITZ" en la
+pantalla que existe para empujar a jugar rapida); `/aperturas` y `/ritmo` filtran `rapid` con el
+mismo argumento escrito que ya usaba `/errores`. **Si agregas una pantalla que corta por clase de
+tiempo, fija `rapid`.**
+
+**4.777 partidas jugables estaban marcadas `skipped`, y los diez chequeos en verde.** 1.406 de
+ellas de rapida —el 54% de la clase que importa— con todas sus jugadas y todos sus relojes
+extraidos. Ningun camino del codigo lo explica: `lib/chess/game.ts` solo marca variantes,
+correspondencia y `daily`, y `markMovesEmpty` solo las de PGN vacio. La hipotesis es una corrida
+manual de SQL, no verificable. Lo que deja la reparacion: `skipped` **nunca mas es un estado
+mudo** (`skip_reason`), el estado y el motivo salen de la MISMA decision para que no se puedan
+desincronizar, el upsert no pisa ninguno de los dos, y el chequeo `skipped_sin_motivo` lo caza.
+
+**Los diez chequeos viejos vigilan que el CALCULO este bien; los cuatro nuevos, que el numero se
+calcule sobre la POBLACION que declara.** Es una familia de invariantes que no existia, y por eso
+ninguno de los fallos graves de la revision se habia detectado. Si agregas un chequeo, pregunta de
+cual de las dos familias es.
+
+**`claimBatch` pone rapida ANTES que blitz, no empatadas.** El orden viejo era
+`(time_class in ('rapid','blitz')) desc`, que le pasaba la decision a `end_time`; como el
+historico reciente es blitz y bala, el motor gasto su presupuesto ahi (1.674 de blitz contra 108
+de rapida) y `/errores` no puede usar nada de eso, porque filtra rapida por decision de la Fase 12.
+
+**Lo que la app llamaba "final" era el medio juego.** `ENDGAME_MAX_PIECES = 6` contaba piezas sin
+peones ni reyes y al inicio cada bando tiene SIETE. El error venia del punto 5 de
+`docs/prompts/fase2-reloj.md` (ya corregido ahi): el codigo era fiel al spec. El criterio nuevo es
+**material no-peon de los dos bandos <= 13** (D=9, T=5, A=C=3), elegido sobre cuatro alternativas
+que estan medidas y tabuladas en el comentario de `lib/chess/phase.ts`. Sobre 60 partidas reales
+de rapida: el final cae de 66,5% a 16,7% de los plies y el medio juego sube a 54,2%.
+`ParsedMove.piecesAfter` paso a llamarse `materialAfter` y trae puntos, no conteo.
+
+**`moves:rephase` vive en el workflow `moves`, no en uno propio.** Los dos modos —`extraer` y
+`refasear`— trabajan sobre la misma tabla y comparten secretos, ambiente y pasos: un workflow
+aparte habria sido un archivo duplicado. `ingest.yml` sigue encadenando `moves:extract` y nunca
+`refasear`: re-derivar el historico completo no es parte de una ingesta.
+
+**`pnpm moves:rephase` solo escribe `phase`.** Las evaluaciones del motor cuestan horas de Actions
+y no se reconstruyen desde el PGN. Es idempotente y la idempotencia es MEDIBLE: `updateMovePhases`
+cuenta solo las filas que cambiaron de valor, asi que una segunda corrida reporta
+`jugadas_cambiadas: 0`. Y es reanudable con `--desde <id>`.
+
+**Todo panel que se titula con una pregunta cierra con su respuesta.** Dos de las cuatro preguntas
+del proyecto ya estaban respondidas y la app callaba: los errores NO vienen de jugar rapido (3,4%
+de error bajo 3 s contra 18,4% sobre 30 s, monotono y replicado en blitz), y el tilt y la fatiga
+miden **efecto nulo** con los intervalos solapados sobre casi mil partidas por brazo. La
+conclusion la deriva la app del dato, con su `n`, no es texto fijo.
+
+**Que "no hay efecto" tambien es un resultado, y hay que decirlo.** `/ritmo` dibujaba tres
+graficos planos sin aclararlo, con el eje de 0 a 100% para datos que viven entre 40% y 62%.
+Y ojo con el criterio: comparar la cota de Wilson del mejor corte contra el BRUTO del peor no
+alcanza — con eso el panel de fatiga anuncio un hallazgo falso por 0,4 puntos. Se compara contra
+la cota superior aproximada (`2*bruto - wilson`).
+
+**El `n` que se muestra es el de la unidad independiente.** 170 intentos sobre 3 ejercicios son
+3 observaciones, no 170, y decirle a alguien "te equivocas 170 veces en esto" sobre tres
+posiciones es el hallazgo falso mas caro posible, porque nombra una debilidad de caracter. El
+panel del entrenador exige 5 ejercicios DISTINTOS, y con los datos de hoy eso significa que no se
+muestra.
+
+**Un dato que no puede significar otra cosa se quita, no se parchea.** `v_conceptos_fallados_rapida`
+calculaba `aciertos` bajo un `where concepto is not null`, y `concepto` solo se escribe cuando se
+FALLA (`lib/spaced-repetition/actions.ts`): la tasa era estructuralmente 0% y no podia valer otra
+cosa ni con 500 ejercicios. `v_conceptos_panel` no la arregla, la elimina.
+
+**El plan de hoy se tiene que poder completar hoy.** El contador viejo era
+`rapidas >= META_MENSUAL && vencidos === 0 ? 2 : 0`: solo podia valer 0 o 2, dependia de la meta
+del MES y de la deuda COMPLETA de repeticion espaciada, y seguia diciendo 0/2 despues de jugar y
+de entrenar. Ahora son tres tareas del dia (jugar, revisar tu derrota, 10 ejercicios), la meta
+diaria de rapida se DERIVA de lo que falta sobre los dias que quedan, y la sesion es de 10
+ejercicios y nunca de los 397 vencidos. Los minutos salen de la mediana real de
+`puzzle_attempts.ms_taken`, no de una constante.
+
+**La deuda de repeticion espaciada no se muestra entera, y menos en la portada.** Es la falla
+tipica del metodo (Chessable la documenta) y mostrar 397 vencidos como "~397 min" de plan del dia
+es una razon para cerrar la app, que es exactamente el riesgo principal del proyecto.
+
+**Accesibilidad: `--color-apagado` daba 3,26:1.** Bajo el minimo AA de 4,5:1, y se usa en texto de
+10,5-11 px (ejes, `.eyebrow`, calendario, leyendas). Paso a 5,11:1 sobre `--color-panel` y 4,69:1
+sobre `--color-panel-alto`, sin perder el escalon frente a `--color-tenue`. Atenuar tampoco puede
+significar ilegible: `opacity-45` subio a `opacity-70`. **Si agregas un token de tinta, calcula el
+contraste contra las cuatro superficies.**
+
+**`<Ayuda>` renderiza un `<details>` y NO puede ir dentro de un `<p>`.** Estaba asi en dos lugares
+de `/partida/[id]` y causaba un error de hidratacion. Los usos en `<th>` y encabezados estan bien.
+
+**Lo que NO esta hecho y no es un olvido.** Las fases 2, 3 y 4 de la revision, con sus prompts
+listos en `docs/review/prompts/`. El backfill (`moves:rephase` y el analisis de rapida) se dispara
+despues de mergear, igual que se hizo con `moves`, `analyze` y `puzzles`. Y queda una advertencia
+de consola en `/partida/[id]`: el `key` que falta esta dentro de `react-chessboard@5.12.1`, que
+mapea sus flechas sin el; React la atribuye a `GameReview` porque es el propietario mas cercano,
+pero el codigo es de la libreria y la advertencia no sale en un build de produccion.

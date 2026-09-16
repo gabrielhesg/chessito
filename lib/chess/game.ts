@@ -13,6 +13,14 @@ export type GameResult = 'win' | 'loss' | 'draw';
 export type AnalysisState = 'pending' | 'claimed' | 'done' | 'failed' | 'skipped';
 
 /**
+ * Por que una partida queda fuera del analisis con motor. Un dato excluido siempre se nombra:
+ * hasta la revision integral `skipped` era terminal y mudo, y por eso 4.777 partidas jugables
+ * quedaron fuera del motor sin que ningun chequeo lo notara (docs/review/00-inventario.md 3.3).
+ * `sin_jugadas` no lo pone este modulo, lo pone `markMovesEmpty` de `moves:extract`.
+ */
+export type SkipReason = 'variante' | 'correspondencia' | 'daily' | 'sin_jugadas';
+
+/**
  * Enum estable de `white.result` / `black.result`. Se usa este y NO el header `Termination`
  * del PGN, que es prosa en ingles y cambia de formato (docs/DATA-SOURCES.md).
  */
@@ -60,6 +68,8 @@ export type GameRow = {
   ply_count: number;
   pgn: string;
   analysis_state: AnalysisState;
+  /** NULL en toda partida analizable. Lo vigila el chequeo `skipped_sin_motivo`. */
+  skip_reason: SkipReason | null;
 };
 
 export type MapGameOptions = {
@@ -102,8 +112,16 @@ export function mapGame(game: ChesscomGame, options: MapGameOptions): GameRow {
   // Las variantes (chess960, bughouse...) no se reproducen con chess.js y no se analizan:
   // se guardan crudas y marcadas 'skipped'.
   const parsed = isChess ? parsePgn(pgn) : null;
-  const analysisState: AnalysisState =
-    !isChess || timeControl.isCorrespondence || game.time_class === 'daily' ? 'skipped' : 'pending';
+  // El motivo y el estado salen de la MISMA decision, para que no puedan desincronizarse:
+  // un `skipped` sin motivo es exactamente el bug que la Fase 1 de la revision reparo.
+  const skipReason: SkipReason | null = !isChess
+    ? 'variante'
+    : game.time_class === 'daily'
+      ? 'daily'
+      : timeControl.isCorrespondence
+        ? 'correspondencia'
+        : null;
+  const analysisState: AnalysisState = skipReason === null ? 'pending' : 'skipped';
 
   const opening = parsed ? resolveOpening(parsed.epds, options.openingsByEpd) : null;
   const result = resultFromTermination(mySide.result);
@@ -134,5 +152,6 @@ export function mapGame(game: ChesscomGame, options: MapGameOptions): GameRow {
     ply_count: parsed?.moves.length ?? 0,
     pgn,
     analysis_state: analysisState,
+    skip_reason: skipReason,
   };
 }

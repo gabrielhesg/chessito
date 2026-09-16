@@ -23,11 +23,11 @@ export type ParsedMove = {
   /** EPD (primeros 4 campos del FEN) DESPUES de la jugada. */
   epdAfter: string;
   /**
-   * Piezas de cada bando DESPUES de la jugada, sin contar peones ni reyes. Es lo que
-   * `lib/chess/phase.ts` usa para decidir cuando empieza el final, sin volver a reproducir
-   * el PGN.
+   * Material de cada bando DESPUES de la jugada, sin contar peones ni reyes (D=9, T=5, A=C=3).
+   * Es lo que `lib/chess/phase.ts` usa para decidir cuando empieza el final, sin volver a
+   * reproducir el PGN.
    */
-  piecesAfter: { white: number; black: number };
+  materialAfter: { white: number; black: number };
 };
 
 export type ParsedGame = {
@@ -42,15 +42,23 @@ export function epdFromFen(fen: string): string {
   return fen.split(' ').slice(0, 4).join(' ');
 }
 
-/** Piezas por bando en el tablero actual, sin contar peones ni reyes. Para `lib/chess/phase.ts`. */
-function countNonPawnKingPieces(chess: Chess): { white: number; black: number } {
+/** Valor de cada pieza para medir cuanto material queda. El peon y el rey no cuentan. */
+const VALOR_PIEZA: Record<string, number> = { q: 9, r: 5, b: 3, n: 3 };
+
+/**
+ * Material por bando en el tablero actual, sin contar peones ni reyes. Para
+ * `lib/chess/phase.ts`, que decide el final por material y no por conteo de piezas: torre
+ * contra caballo no es lo mismo que caballo contra caballo, aunque las dos sean "una pieza".
+ */
+function countNonPawnKingMaterial(chess: Chess): { white: number; black: number } {
   let white = 0;
   let black = 0;
   for (const row of chess.board()) {
     for (const square of row) {
       if (!square || square.type === 'p' || square.type === 'k') continue;
-      if (square.color === 'w') white += 1;
-      else black += 1;
+      const valor = VALOR_PIEZA[square.type] ?? 0;
+      if (square.color === 'w') white += valor;
+      else black += valor;
     }
   }
   return { white, black };
@@ -97,7 +105,7 @@ export function parsePgn(pgn: string): ParsedGame {
         uci: `${made.from}${made.to}${made.promotion ?? ''}`,
         clockMs: parseClockToMs(parsed.commentDiag?.clk),
         epdAfter,
-        piecesAfter: countNonPawnKingPieces(chess),
+        materialAfter: countNonPawnKingMaterial(chess),
       });
     } catch (error) {
       throw new PgnParseError(

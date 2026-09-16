@@ -29,7 +29,14 @@ docs/ENGINEERING.md es criterio de aceptación. Muéstrame el plan antes de escr
    games.opening_id. No necesita motor.
 
 5. phase: 0 apertura mientras is_book o hasta el ply 20, lo que ocurra después; 2 final cuando
-   cada bando tenga 6 piezas o menos SIN CONTAR peones ni reyes; 1 medio juego en el resto.
+   el MATERIAL sin peones ni reyes de los DOS bandos sume 13 puntos o menos (D=9, T=5, A=C=3);
+   1 medio juego en el resto.
+
+   CORREGIDO por la revisión integral. Este punto decía antes "cuando cada bando tenga 6 piezas o
+   menos sin contar peones ni reyes", y al inicio cada bando tiene SIETE (D + 2T + 2A + 2C): con
+   ese criterio bastaba un cambio por bando para declarar "final", y el 62% del histórico quedó
+   ahí. El código era fiel al spec; el error estaba en el spec. Ver lib/chess/phase.ts, que trae
+   la tabla de umbrales medidos sobre 60 partidas reales.
 
 6. Página /reloj: tiempo gastado por número de jugada, distribución de tiempos por jugada,
    porcentaje de jugadas bajo 3 segundos por fase, y en qué momento de la partida se le acaba el

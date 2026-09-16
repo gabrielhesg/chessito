@@ -2,7 +2,9 @@
 export const N_MINIMO = 20;
 
 export function filaAtenuada(n: number): string {
-  return n < N_MINIMO ? 'opacity-45' : '';
+  // `opacity-45` hundia el texto de la fila muy por debajo de AA: atenuar no puede significar
+  // ilegible, y estas tablas son la vista accesible de cada grafico.
+  return n < N_MINIMO ? 'opacity-70' : '';
 }
 
 export function pct(value: number | null | undefined): string {

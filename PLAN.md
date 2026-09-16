@@ -1,11 +1,40 @@
 # Plan de construcción
 
-Cuatro fases. Cada una termina con algo que se puede abrir y usar, no con un informe.
+Cuatro fases de construcción, ya terminadas, y una revisión integral encima.
 
 `docs/ENGINEERING.md` define los estándares que aplican a todas: tipado estricto, tests, CI en
 verde, migraciones versionadas. Una fase con el CI en rojo no está terminada.
 
 ---
+
+## Estado actual
+
+Las cuatro fases originales están construidas, y el proyecto siguió hasta la Fase 12
+(ver `CLAUDE.md`, que lleva el estado real fase por fase). Lo que este archivo describía como
+"por construir" existe desde hace tiempo.
+
+Encima de eso hay una **revisión integral** (`docs/review/`), que midió la app contra el
+histórico real y encontró que el backend está sano pero la medición apunta al lugar equivocado.
+Su plan por fases, sus criterios de aceptación y sus prompts viven en
+**[docs/review/PLAN-REVISION.md](docs/review/PLAN-REVISION.md)**.
+
+| Fase de la revisión | Qué resuelve | Estado |
+|---|---|---|
+| **Fase 1 · Que la app hable de rápida y diga lo que ya sabe** | Que cada número se calcule sobre la población que dice, y que cada panel que pregunta responda | **Hecha** (`docs/review/BITACORA.md`) |
+| **Fase 2 · El ciclo de la derrota** | Modo ciego en `/partida`, cola de derrotas sin revisar, sesión dirigida, `/reloj` por clase | Pendiente (`docs/review/prompts/revision-fase2.md`) |
+| **Fase 3 · Las dos debilidades, medidas** | North Star (piezas colgadas por partida), conversión de ventaja, serie de mejora | Pendiente (`docs/review/prompts/revision-fase3.md`) |
+| **Fase 4 · Repertorio y ciclo** | Repertorio declarado, tema de la semana, `rated`, limpieza | Pendiente (`docs/review/prompts/revision-fase4.md`) |
+
+**Lo que hay que operar después de mergear la Fase 1 de la revisión**, en orden: aplicar la
+migración `0011` con el workflow `migraciones`; correr `pnpm moves:rephase` (una vez, idempotente);
+regenerar `pnpm db:types` contra la base real; y disparar el análisis desde `/salud`, que ahora
+sirve la rápida primero. Detalle en `docs/review/BITACORA.md`.
+
+---
+
+## Las cuatro fases de construcción originales
+
+Se dejan como registro de cómo se llegó acá. Todas están terminadas.
 
 ## Fase 1 · La app en el aire
 

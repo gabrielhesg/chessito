@@ -38,10 +38,13 @@ function Mini({
 }) {
   return (
     <div className="rounded-xl border border-borde bg-panel px-3.5 py-3">
-      <p className="eyebrow inline-flex items-center">
+      {/* `div` y no `p`: `Ayuda` renderiza un `<details>/<summary>`, y `<details>` no puede ser
+          descendiente de `<p>`. El navegador reestructuraba el DOM y React reportaba un error de
+          hidratacion en la mejor pantalla de la app. */}
+      <div className="eyebrow inline-flex items-center">
         {etiqueta}
         {ayuda ? <Ayuda>{ayuda}</Ayuda> : null}
-      </p>
+      </div>
       <p className={`mt-1.5 text-[20px] font-semibold tabular-nums ${tono === 'critico' ? 'text-critico' : ''}`}>
         {valor}
         {sufijo ? <span className="ml-1 text-[12px] font-normal text-tenue">{sufijo}</span> : null}
@@ -279,7 +282,8 @@ export default async function PartidaPage({
                 </li>
               ) : null}
             </ul>
-            <p className="mt-3 text-xs text-tenue">
+            {/* Mismo caso que en `Mini`: un `<details>` no va dentro de un `<p>`. */}
+            <div className="mt-3 text-xs text-tenue">
               La precisión es un cálculo de esta app sobre la caída de probabilidad de victoria de
               cada jugada, no el número que reporta chess.com.
               <Ayuda>
@@ -287,7 +291,7 @@ export default async function PartidaPage({
                 simple, excluyendo libro y posiciones ya decididas. Correlaciona con la precisión de
                 chess.com pero no coincide: ellos usan CAPS, que es otra fórmula cerrada.
               </Ayuda>
-            </p>
+            </div>
           </Panel>
         ) : null}
       </div>

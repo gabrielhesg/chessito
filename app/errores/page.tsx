@@ -1,4 +1,4 @@
-import { analysisCoverage, errorsByMoveTime, errorsByPhase, errorsDiagnostic } from '@/lib/data';
+import { coberturaAnalisis, errorsByMoveTime, errorsByPhase, errorsDiagnostic } from '@/lib/data';
 import {
   Ayuda,
   Badge,
@@ -32,7 +32,7 @@ const CLASE = 'rapid';
 
 export default async function ErroresPage() {
   const [cobertura, porFaseTodas, porTiempoTodas] = await Promise.all([
-    analysisCoverage(),
+    coberturaAnalisis(),
     errorsByPhase(),
     errorsByMoveTime(),
   ]);
@@ -44,8 +44,16 @@ export default async function ErroresPage() {
   const porFase = porFaseTodas.filter((f) => f.time_class === CLASE);
   const porTiempo = porTiempoTodas.filter((f) => f.time_class === CLASE);
 
-  const analizadas = cobertura.reduce((s, c) => s + (c.n_analyzed ?? 0), 0);
-  const totales = cobertura.reduce((s, c) => s + (c.n_games ?? 0), 0);
+  // La cobertura se calcula con el MISMO corte que alimenta los graficos. Antes sumaba TODAS
+  // las clases y declaraba "1.782 de 10.106" en una pagina que solo muestra rapida: el numero
+  // honesto era 108 de 2.588, o sea sobredeclaraba la base 16 veces. Una pagina nunca declara
+  // una base que no uso.
+  const deLaClase = cobertura.find((c) => c.time_class === CLASE);
+  const analizadas = deLaClase?.n_analyzed ?? 0;
+  // El denominador honesto es lo ANALIZABLE, no el total: lo excluido por un motivo (variantes,
+  // correspondencia, daily) nunca va a entrar al motor y no pertenece a la cuenta.
+  const totales = deLaClase?.n_analizables ?? 0;
+  const enCola = deLaClase?.n_pending ?? 0;
   const clases = [CLASE];
 
   // Hay partidas analizadas pero las tablas de abajo salen vacias: algo esta filtrando todas
@@ -67,6 +75,27 @@ export default async function ErroresPage() {
     };
   });
   const maxTasa = Math.max(1, ...columnasTiempo.map((c) => c.valor ?? 0));
+
+  // La conclusion la escribe la app, derivada de las filas. La pregunta 4 del proyecto
+  // ("¿los errores vienen de jugar rapido?") ya esta respondida por los datos y hasta ahora la
+  // pagina dibujaba la escalera y se callaba: el titulo era la pregunta y la respuesta no
+  // aparecia en ningun lado.
+  const tasaDe = (bucket: string): number | null => {
+    const f = porTiempo.find((x) => x.time_bucket === bucket);
+    return f?.error_rate === null || f?.error_rate === undefined ? null : f.error_rate * 100;
+  };
+  const rapidas = tasaDe('<3s');
+  const lentas = tasaDe('>30s');
+  const nRapidas = porTiempo.find((x) => x.time_bucket === '<3s')?.n_moves ?? 0;
+  const nLentas = porTiempo.find((x) => x.time_bucket === '>30s')?.n_moves ?? 0;
+  const hayRespuestaDeTiempo = rapidas !== null && lentas !== null && nRapidas >= 20 && nLentas >= 20;
+  const errorEnLasLentas = hayRespuestaDeTiempo && lentas > rapidas;
+
+  const tituloTiempo = !hayRespuestaDeTiempo
+    ? '¿Los errores se concentran en las jugadas rápidas?'
+    : errorEnLasLentas
+      ? 'Tus errores están donde más piensas, no donde vas rápido'
+      : 'Tus errores sí se concentran en las jugadas rápidas';
 
   // Errores graves por fase, normalizados por jugada: comparar conteos crudos entre fases
   // premiaria al medio juego solo por ser mas largo.
@@ -95,7 +124,8 @@ export default async function ErroresPage() {
           <strong className="text-tenue">Solo partidas de rápida.</strong> En bala y en blitz no
           hay tiempo para calcular: un error ahí dice más del reloj que de lo que entiendes, y
           mezclarlo mueve la conclusión justo en la pregunta que esta página existe para responder.
-          Basado en {analizadas.toLocaleString('es-CL')} de {totales.toLocaleString('es-CL')} partidas analizadas. Se excluyen las jugadas de libro y las de partidas ya decididas (win% del que mueve sobre 95 o bajo 5): jugar flojo en una partida ganada no cuenta como blunder.
+          Basado en {analizadas.toLocaleString('es-CL')} de {totales.toLocaleString('es-CL')} partidas de rápida analizadas
+          {enCola > 0 ? `, con ${enCola.toLocaleString('es-CL')} en cola` : ''}. Se excluyen las jugadas de libro y las de partidas ya decididas (win% del que mueve sobre 95 o bajo 5): jugar flojo en una partida ganada no cuenta como blunder.
         </>
       }
     >
@@ -131,8 +161,8 @@ export default async function ErroresPage() {
 
         <div className="grid gap-6 lg:grid-cols-2">
           <Panel
-            title="¿Los errores se concentran en las jugadas rápidas?"
-            subtitle={`Tasa de error según cuánto pensaste la jugada${claseGrafico ? ` · ${claseGrafico}` : ''}`}
+            title={tituloTiempo}
+            subtitle="¿Los errores se concentran en las jugadas rápidas? · Tasa de error según cuánto pensaste la jugada"
           >
             {porTiempo.length === 0 ? (
               <EmptyState
@@ -140,7 +170,28 @@ export default async function ErroresPage() {
                 detalle="El motor corre en GitHub Actions. Puedes dispararlo desde Salud."
               />
             ) : (
-              <BarrasV datos={columnasTiempo} max={maxTasa} unidad="%" />
+              <>
+                <BarrasV datos={columnasTiempo} max={maxTasa} unidad="%" />
+                {hayRespuestaDeTiempo ? (
+                  <div className="mt-4 border-t border-borde pt-3.5">
+                    <p className="text-[13.5px] leading-relaxed">
+                      <strong>{errorEnLasLentas ? 'No.' : 'Sí.'}</strong> Fallas el{' '}
+                      <strong className="tabular-nums">{rapidas.toFixed(1)}%</strong> de las jugadas
+                      instantáneas ({nRapidas.toLocaleString('es-CL')} jugadas) y el{' '}
+                      <strong className="tabular-nums">{lentas.toFixed(1)}%</strong> de las que
+                      piensas más de 30 segundos ({nLentas.toLocaleString('es-CL')} jugadas).
+                      {errorEnLasLentas
+                        ? ' Reconoces los momentos críticos —por eso les das tiempo— y no los resuelves.'
+                        : ' El reloj sí es parte del problema.'}
+                    </p>
+                    <p className="mt-2 text-[11.5px] leading-relaxed text-apagado">
+                      Pensar mucho también correlaciona con posiciones difíciles, así que esto no
+                      prueba que pensar te perjudique. Lo que sí hace es descartar que el apuro sea
+                      la causa.
+                    </p>
+                  </div>
+                ) : null}
+              </>
             )}
           </Panel>
 

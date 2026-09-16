@@ -19,6 +19,7 @@
     "openings:load": "tsx --conditions=react-server scripts/load-openings.ts",
     "ingest": "tsx --conditions=react-server scripts/ingest.ts",
     "moves:extract": "tsx --conditions=react-server scripts/extract-moves.ts",
+    "moves:rephase": "tsx --conditions=react-server scripts/rephase-moves.ts",
     "analyze": "tsx --conditions=react-server scripts/analyze.ts",
     "puzzles:build": "tsx --conditions=react-server scripts/build-puzzles.ts",
     "puzzles:enrich": "tsx --conditions=react-server scripts/build-puzzles.ts --enrich",

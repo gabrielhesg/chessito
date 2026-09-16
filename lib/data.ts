@@ -19,6 +19,7 @@ export type HealthJobs = Views['v_health_jobs']['Row'];
 export type HealthSummary = Views['v_health_summary']['Row'];
 export type GamesByMonth = Views['v_games_by_month']['Row'];
 export type AnalysisCoverage = Views['v_analysis_coverage']['Row'];
+export type CoberturaAnalisis = Views['v_cobertura_analisis']['Row'];
 export type MoveTimeByPly = Views['v_move_time_by_ply']['Row'];
 export type MoveTimeByPhase = Views['v_move_time_by_phase']['Row'];
 export type MoveTimeDistribution = Views['v_move_time_distribution']['Row'];
@@ -33,12 +34,20 @@ function fail(view: string, message: string): never {
   throw new Error(`No se pudo leer ${view}: ${message}`);
 }
 
+/**
+ * Actividad mensual por clase de tiempo.
+ *
+ * El limite es de FILAS, y cada mes aporta una fila por clase jugada: con `limit(24)` la
+ * portada veia ~8 meses, justo la ventana en que Gabriel dejo la rapida, y de ahi salia el
+ * "rating de blitz" como numero grande. Ahora se piden 24 meses de verdad (hasta 4 clases por
+ * mes) y quien presenta decide que clase mostrar.
+ */
 export async function monthlyActivity(): Promise<MonthlyActivity[]> {
   const { data, error } = await supabaseAdmin()
     .from('v_monthly_activity_wilson')
     .select('*')
     .order('month_local', { ascending: false })
-    .limit(24);
+    .limit(24 * 4);
   if (error) fail('v_monthly_activity_wilson', error.message);
   return data ?? [];
 }
@@ -118,6 +127,19 @@ export async function gamesByMonth(): Promise<GamesByMonth[]> {
 export async function analysisCoverage(): Promise<AnalysisCoverage[]> {
   const { data, error } = await supabaseAdmin().from('v_analysis_coverage').select('*');
   if (error) fail('v_analysis_coverage', error.message);
+  return data ?? [];
+}
+
+/**
+ * Cobertura del analisis por clase, con TODAS las columnas de estado.
+ *
+ * A diferencia de `v_analysis_coverage`, sus columnas suman su propio `n_games`: la vieja no
+ * contaba las `skipped` en ningun lado y por eso 1.406 partidas de rapida desaparecian del
+ * denominador sin dejar rastro. Ver la migracion 0011.
+ */
+export async function coberturaAnalisis(): Promise<CoberturaAnalisis[]> {
+  const { data, error } = await supabaseAdmin().from('v_cobertura_analisis').select('*');
+  if (error) fail('v_cobertura_analisis', error.message);
   return data ?? [];
 }
 
@@ -258,14 +280,14 @@ export async function dueCount(): Promise<number> {
  * diagnostico de hoy.
  */
 export async function conceptosFallados(): Promise<
-  Array<{ concepto: string; intentos: number; ejercicios: number; primeros: number; aciertos: number }>
+  Array<{ concepto: string; intentos: number; ejercicios: number; esResiduo: boolean }>
 > {
   const { data, error } = await supabaseAdmin()
-    .from('v_conceptos_fallados_rapida')
-    .select('concepto, intentos, ejercicios, primeros, aciertos')
+    .from('v_conceptos_panel')
+    .select('concepto, intentos, ejercicios, es_residuo')
     .order('intentos', { ascending: false })
     .limit(8);
-  if (error) fail('v_conceptos_fallados_rapida', error.message);
+  if (error) fail('v_conceptos_panel', error.message);
   return (data ?? []).flatMap((f) =>
     f.concepto
       ? [
@@ -273,8 +295,7 @@ export async function conceptosFallados(): Promise<
             concepto: f.concepto,
             intentos: f.intentos ?? 0,
             ejercicios: f.ejercicios ?? 0,
-            primeros: f.primeros ?? 0,
-            aciertos: f.aciertos ?? 0,
+            esResiduo: f.es_residuo ?? false,
           },
         ]
       : [],
@@ -441,6 +462,82 @@ export async function gamesByDay(month: string): Promise<GamesByDay[]> {
   return data ?? [];
 }
 
+
+/**
+ * La derrota de rapida mas reciente. Es la entrada del ciclo de aprendizaje: hoy llegar a ella
+ * cuesta cinco taps y un scroll horizontal que la interfaz no senaliza, y por eso el ritual
+ * "toda derrota se analiza" depende de que Gabriel se acuerde.
+ *
+ * Todavia no sabe si ya la reviso: eso es `game_reviews`, de la Fase 2 de la revision.
+ */
+export async function ultimaDerrotaDeRapida(): Promise<Game | null> {
+  const { data, error } = await supabaseAdmin()
+    .from('games')
+    .select('*')
+    .eq('rules', 'chess')
+    .eq('time_class', 'rapid')
+    .eq('result', 'loss')
+    .order('end_time', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) fail('games', error.message);
+  return data;
+}
+
+/**
+ * Desglose por control de tiempo de las partidas de rapida de un mes local (`YYYY-MM`).
+ *
+ * Su plan declara 15+10 como formato base y el historico tiene 19 partidas en `900+10` contra
+ * 2.569 en `600`. Sin este corte, la app no puede notar una desviacion del plan que sus propios
+ * datos contienen.
+ */
+export async function formatosDeRapida(month: string): Promise<Array<{ timeControl: string; n: number }>> {
+  const { data, error } = await supabaseAdmin()
+    .from('v_rapida_por_formato')
+    .select('time_control, n')
+    .eq('month_local', month)
+    .order('n', { ascending: false });
+  if (error) fail('v_rapida_por_formato', error.message);
+  return (data ?? []).flatMap((f) => (f.time_control ? [{ timeControl: f.time_control, n: f.n ?? 0 }] : []));
+}
+
+/**
+ * Cuantas partidas de rapida jugo HOY (dia local de Santiago).
+ *
+ * La tarea del dia tiene que poder completarse hoy: el contador viejo de la portada era
+ * `rapidas >= 30 && vencidos === 0 ? 2 : 0`, o sea solo podia valer 0 o 2 y dependia de la meta
+ * del MES y de la deuda completa de repeticion espaciada.
+ */
+export async function rapidasDeHoy(): Promise<number> {
+  const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santiago' }).format(new Date());
+  const { data, error } = await supabaseAdmin()
+    .from('v_games_by_day')
+    .select('n_rapid')
+    .eq('day_local', hoy)
+    .maybeSingle();
+  if (error) fail('v_games_by_day', error.message);
+  return data?.n_rapid ?? 0;
+}
+
+/**
+ * Cuanto toma un ejercicio, en milisegundos: la mediana real de los intentos que ya ocurrieron.
+ * La portada estimaba "1 minuto por ejercicio" con una constante, que ademas multiplicaba por
+ * los 397 vencidos y daba "~397 min" como plan del dia.
+ */
+export async function medianaPorEjercicioMs(): Promise<number | null> {
+  const { data, error } = await supabaseAdmin()
+    .from('puzzle_attempts')
+    .select('ms_taken')
+    .not('ms_taken', 'is', null)
+    .order('attempted_at', { ascending: false })
+    .limit(100);
+  if (error) fail('puzzle_attempts', error.message);
+  const valores = (data ?? []).flatMap((f) => (f.ms_taken === null ? [] : [f.ms_taken])).sort((a, b) => a - b);
+  if (valores.length === 0) return null;
+  const medio = Math.floor(valores.length / 2);
+  return valores.length % 2 === 0 ? ((valores[medio - 1] ?? 0) + (valores[medio] ?? 0)) / 2 : (valores[medio] ?? 0);
+}
+
 /** El rating mas alto alcanzado en un control de tiempo. No se guarda: se deriva de `games`. */
 export async function ratingMaximo(timeClass: string): Promise<number | null> {
   const { data, error } = await supabaseAdmin()
@@ -455,20 +552,20 @@ export async function ratingMaximo(timeClass: string): Promise<number | null> {
   return data?.my_rating ?? null;
 }
 
-/** Ejercicios vencidos agrupados por patron tactico, para "lo proximo que vence". */
+/**
+ * Ejercicios vencidos agrupados por patron tactico.
+ *
+ * La agregacion vive en `v_ejercicios_vencidos_por_tema` (migracion 0011) y no en TypeScript,
+ * que es la regla del proyecto. Antes se traian hasta 1.000 filas y se agrupaban en memoria:
+ * con 397 vencidos funcionaba, y con 1.200 habria dado un desglose incompleto sin avisar.
+ */
 export async function dueByTheme(): Promise<Array<{ theme: string | null; n: number }>> {
   const { data, error } = await supabaseAdmin()
-    .from('puzzles')
-    .select('theme')
-    .lte('due_at', new Date().toISOString())
-    .limit(1000);
-  if (error) fail('puzzles', error.message);
-
-  const porTema = new Map<string | null, number>();
-  for (const fila of data ?? []) {
-    porTema.set(fila.theme, (porTema.get(fila.theme) ?? 0) + 1);
-  }
-  return [...porTema.entries()].map(([theme, n]) => ({ theme, n })).sort((a, b) => b.n - a.n);
+    .from('v_ejercicios_vencidos_por_tema')
+    .select('theme, n')
+    .order('n', { ascending: false });
+  if (error) fail('v_ejercicios_vencidos_por_tema', error.message);
+  return (data ?? []).map((f) => ({ theme: f.theme, n: f.n ?? 0 }));
 }
 
 /**

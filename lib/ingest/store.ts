@@ -84,5 +84,18 @@ export interface IngestStore {
    */
   markMovesEmpty(gameId: number): Promise<void>;
 
+  /**
+   * Partidas que YA tienen filas en `moves`, para `moves:rephase`. Es el espejo de
+   * `loadGamesForMoves`: aquella busca las que faltan, esta las que hay que re-derivar.
+   * `desdeId` permite reanudar una corrida cortada sin volver a empezar de cero.
+   */
+  loadGamesForRephase(desdeId: number, limite: number): Promise<GameForMoves[]>;
+  /**
+   * Reescribe `moves.phase` de una partida. NO toca ninguna otra columna: las evaluaciones del
+   * motor cuestan horas de Actions y no se pueden recalcular desde el PGN.
+   * Devuelve cuantas filas cambiaron de valor, que es lo que hace medible la idempotencia.
+   */
+  updateMovePhases(gameId: number, fases: { ply: number; phase: 0 | 1 | 2 }[]): Promise<number>;
+
   close(): Promise<void>;
 }
