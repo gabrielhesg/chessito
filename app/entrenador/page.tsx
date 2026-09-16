@@ -79,9 +79,13 @@ export default async function EntrenadorPage({
     etiqueta: NOMBRE_CONCEPTO[c.concepto] ?? c.concepto,
     intentos: c.intentos,
     ejercicios: c.ejercicios,
-    // La barra es proporcional al peor, no un porcentaje: un porcentaje sin denominador no dice
-    // nada, y eso era justo lo que no se entendia del panel anterior.
+    // La barra es proporcional al que mas repites, no un porcentaje: un porcentaje suelto sin
+    // denominador no dice nada, y eso era justo lo que no se entendia del panel anterior.
     pct: (c.intentos / maximo) * 100,
+    // La tasa de acierto vuelve, pero ahora sobre un agrupamiento que significa algo. Solo tiene
+    // sentido sobre el PRIMER intento, igual que SM-2; sin primeros intentos, no se muestra.
+    acierto: c.primeros > 0 ? (c.aciertos / c.primeros) * 100 : null,
+    primeros: c.primeros,
     detalle: TEXTO_CONCEPTO[c.concepto as Concepto] ?? '',
   }));
 
@@ -101,20 +105,22 @@ export default async function EntrenadorPage({
         // Sin nada resuelto hoy, un "0 / 8" sin contexto no informa: no se dibuja. Aparece
         // recien cuando hay algo que contar.
         sesion.length > 0 ? (
-          <div className="min-w-[190px] text-right">
-            <p className="eyebrow">
-              Resueltos hoy
-              <Ayuda>
-                Verde es al primer intento y sin pista, que es el mismo criterio con el que la
-                repetición espaciada decide cuándo volver a mostrarte el ejercicio. Por eso un
-                ejercicio que acertaste al tercer intento sale rojo: la app lo sigue considerando
-                pendiente y te lo va a volver a servir.
-              </Ayuda>
-            </p>
-            <p className="mt-1.5 text-[20px] font-semibold tabular-nums">
-              {sesion.filter((e) => e.correct).length}
-              <span className="text-[14px] font-normal text-apagado"> / {total}</span>
-            </p>
+          <div className="w-full max-w-[280px] sm:w-auto">
+            <div className="flex items-baseline justify-end gap-2">
+              <p className="eyebrow">
+                Resueltos hoy
+                <Ayuda alinear="der">
+                  Verde es al primer intento y sin pista, que es el mismo criterio con el que la
+                  repetición espaciada decide cuándo volver a mostrarte el ejercicio. Por eso uno
+                  que acertaste al tercer intento sale rojo: la app lo sigue considerando pendiente
+                  y te lo va a volver a servir.
+                </Ayuda>
+              </p>
+              <p className="text-[20px] font-semibold leading-none tabular-nums">
+                {sesion.filter((e) => e.correct).length}
+                <span className="text-[14px] font-normal text-apagado"> / {total}</span>
+              </p>
+            </div>
             <div className="mt-2 flex justify-end gap-1">
               {Array.from({ length: total }, (_, i) => {
                 const hecho = sesion[i];
@@ -128,14 +134,16 @@ export default async function EntrenadorPage({
                 );
               })}
             </div>
-            {/* La explicacion va VISIBLE y no solo detras del tooltip: un "0 / 8" con barritas de
-                colores y sin leyenda no se entiende, y preguntarselo es exactamente lo que paso. */}
-            <p className="mt-1.5 text-[11px] leading-relaxed text-apagado">
-              Un punto por ejercicio cerrado hoy.{' '}
-              <span className="text-bien">Verde</span> es al primer intento,{' '}
-              <span className="text-critico">rojo</span> es que necesitaste más de uno. El{' '}
-              {PUNTOS_SESION} es una referencia, no una obligación.
-            </p>
+            {/* La leyenda va VISIBLE, pero compacta: la frase larga estiraba este bloque a lo
+                ancho de la cabecera y lo desalineaba del numero y de los puntos. */}
+            <div className="mt-1.5 flex items-center justify-end gap-3 text-[11px] text-apagado">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-1 w-3 rounded-full bg-bien" />1er intento
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-1 w-3 rounded-full bg-critico" />más de uno
+              </span>
+            </div>
           </div>
         ) : null
       }

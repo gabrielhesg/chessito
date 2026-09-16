@@ -248,25 +248,36 @@ export async function dueCount(): Promise<number> {
 /**
  * En que conceptos te equivocas mas, contando INTENTOS fallados.
  *
- * Lee `v_conceptos_fallados`, que la migracion 0009 creo para este panel y que nunca se habia
- * conectado: la pagina seguia agrupando por `puzzles.theme`, que es null en casi todos los
- * ejercicios — por eso el panel decia siempre "Sin patron".
+ * Lee `v_conceptos_fallados_rapida` (migracion 0010), que cuenta SOLO las partidas de rapida: en
+ * bala y en blitz un error dice mas del reloj que de lo que entiendes, y mezclarlos vuelve el
+ * panel inutil justo para lo que existe. Los EJERCICIOS se siguen sirviendo desde todas las
+ * partidas: una posicion perdida en blitz entrena igual.
  *
  * Cuenta el historial completo, asi que un error que ya corregiste sigue apareciendo. La copia de
  * la pantalla lo dice ("los que mas has repetido"), para que el numero no se lea como un
  * diagnostico de hoy.
  */
 export async function conceptosFallados(): Promise<
-  Array<{ concepto: string; intentos: number; ejercicios: number }>
+  Array<{ concepto: string; intentos: number; ejercicios: number; primeros: number; aciertos: number }>
 > {
   const { data, error } = await supabaseAdmin()
-    .from('v_conceptos_fallados')
-    .select('concepto, intentos, ejercicios')
+    .from('v_conceptos_fallados_rapida')
+    .select('concepto, intentos, ejercicios, primeros, aciertos')
     .order('intentos', { ascending: false })
     .limit(8);
-  if (error) fail('v_conceptos_fallados', error.message);
+  if (error) fail('v_conceptos_fallados_rapida', error.message);
   return (data ?? []).flatMap((f) =>
-    f.concepto ? [{ concepto: f.concepto, intentos: f.intentos ?? 0, ejercicios: f.ejercicios ?? 0 }] : [],
+    f.concepto
+      ? [
+          {
+            concepto: f.concepto,
+            intentos: f.intentos ?? 0,
+            ejercicios: f.ejercicios ?? 0,
+            primeros: f.primeros ?? 0,
+            aciertos: f.aciertos ?? 0,
+          },
+        ]
+      : [],
   );
 }
 

@@ -453,6 +453,17 @@ export type Database = {
         }
         Relationships: []
       }
+      v_conceptos_fallados_rapida: {
+        Row: {
+          concepto: string | null
+          intentos: number | null
+          ejercicios: number | null
+          primeros: number | null
+          aciertos: number | null
+          ultimo: string | null
+        }
+        Relationships: []
+      }
       v_data_quality: {
         Row: {
           check_name: string | null
