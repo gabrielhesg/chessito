@@ -6,7 +6,7 @@
 
 **Insumos:** `00-inventario.md` (datos y recorrido), `00-benchmark.md` (referentes),
 `01-pedagogia.md` (PED-01..20), `02-ux.md` (UX-01..18), `03-bi.md` (BI-01..22), y la revisión
-cruzada de los tres. 58 hallazgos con evidencia, fusionados acá en **19 propuestas** repartidas
+cruzada de los tres. 60 hallazgos con evidencia (PED 20, UX 18, BI 22), fusionados acá en **19 propuestas** repartidas
 en cuatro fases.
 
 ## Limitaciones: qué no se pudo verificar
