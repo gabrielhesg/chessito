@@ -573,6 +573,16 @@ export type Database = {
         }
         Relationships: []
       }
+      v_conversion_de_ventaja: {
+        Row: {
+          n: number | null
+          ganadas: number | null
+          tablas: number | null
+          perdidas: number | null
+          conversion_lower: number | null
+        }
+        Relationships: []
+      }
       v_data_quality: {
         Row: {
           check_name: string | null
@@ -783,6 +793,27 @@ export type Database = {
         }
         Relationships: []
       }
+      v_north_star: {
+        Row: {
+          n: number | null
+          piezas_por_partida: number | null
+          graves_por_partida: number | null
+          pvr_por_jugada: number | null
+          desde: string | null
+          hasta: string | null
+        }
+        Relationships: []
+      }
+      v_north_star_mensual: {
+        Row: {
+          month_local: string | null
+          n: number | null
+          piezas_por_partida: number | null
+          graves_por_partida: number | null
+          pvr_por_jugada: number | null
+        }
+        Relationships: []
+      }
       v_opening_performance: {
         Row: {
           opening_id: string | null
@@ -808,6 +839,19 @@ export type Database = {
         }
         Relationships: []
       }
+      v_piezas_colgadas_por_partida: {
+        Row: {
+          game_id: number | null
+          end_time: string | null
+          month_local: string | null
+          result: Database["public"]["Enums"]["game_result"] | null
+          piezas_colgadas: number | null
+          graves: number | null
+          jugadas_propias: number | null
+          win_pct_perdido: number | null
+        }
+        Relationships: []
+      }
       v_rapida_por_formato: {
         Row: {
           month_local: string | null
@@ -822,6 +866,27 @@ export type Database = {
           n: number | null
           reconocidos: number | null
           contestados: number | null
+        }
+        Relationships: []
+      }
+      v_regalos_del_rival: {
+        Row: {
+          game_id: number | null
+          month_local: string | null
+          end_time: string | null
+          ply: number | null
+          eval_mio: number | null
+          eval_tras_mi_respuesta: number | null
+          aprovechado: boolean | null
+        }
+        Relationships: []
+      }
+      v_regalos_mensual: {
+        Row: {
+          month_local: string | null
+          n: number | null
+          aprovechados: number | null
+          aprovechamiento_lower: number | null
         }
         Relationships: []
       }
@@ -851,6 +916,18 @@ export type Database = {
           phase: number | null
           n_games: number | null
           avg_ply: number | null
+        }
+        Relationships: []
+      }
+      v_ventaja_por_partida: {
+        Row: {
+          game_id: number | null
+          end_time: string | null
+          result: Database["public"]["Enums"]["game_result"] | null
+          opp_username: string | null
+          ventaja_maxima: number | null
+          ply_de_la_ventaja: number | null
+          ply_perdida: number | null
         }
         Relationships: []
       }
