@@ -404,6 +404,21 @@ export type Database = {
           }
         ]
       }
+      schema_migrations: {
+        Row: {
+          version: string
+          applied_at: string
+        }
+        Insert: {
+          version: string
+          applied_at?: string
+        }
+        Update: {
+          version?: string
+          applied_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       v_after_result: {
@@ -499,6 +514,15 @@ export type Database = {
         }
         Relationships: []
       }
+      v_distribucion_de_tiempo: {
+        Row: {
+          time_class: string | null
+          phase: number | null
+          time_bucket: string | null
+          n: number | null
+        }
+        Relationships: []
+      }
       v_ejercicios_vencidos_por_tema: {
         Row: {
           theme: string | null
@@ -588,6 +612,15 @@ export type Database = {
           n_games: number | null
           n_analyzed: number | null
           n_pending: number | null
+        }
+        Relationships: []
+      }
+      v_momento_del_timeout: {
+        Row: {
+          time_class: string | null
+          phase: number | null
+          n_games: number | null
+          avg_ply: number | null
         }
         Relationships: []
       }
@@ -681,6 +714,27 @@ export type Database = {
           month_local: string | null
           time_control: string | null
           n: number | null
+        }
+        Relationships: []
+      }
+      v_tiempo_por_fase: {
+        Row: {
+          time_class: string | null
+          phase: number | null
+          n: number | null
+          pct_under_3s_lower: number | null
+          pct_under_3s_bruto: number | null
+          avg_move_time_ms: number | null
+        }
+        Relationships: []
+      }
+      v_tiempo_por_jugada: {
+        Row: {
+          time_class: string | null
+          ply: number | null
+          n: number | null
+          avg_move_time_ms: number | null
+          median_move_time_ms: number | null
         }
         Relationships: []
       }

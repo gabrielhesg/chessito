@@ -1,4 +1,10 @@
-import { moveTimeByPhase, moveTimeByPly, moveTimeDistribution, timeoutMoment } from '@/lib/data';
+import {
+  distribucionDeTiempo,
+  momentoDelTimeout,
+  tiempoPorFase,
+  tiempoPorJugada,
+  type TiempoPorFase,
+} from '@/lib/data';
 import { Ayuda, Badge, EmptyState, Fila, Pagina, Panel, Stat, Tabla, Td, pct } from '@/components/ui';
 import { BarrasH, type BarraH } from '@/components/charts/BarrasH';
 import { BarrasV, type BarraV } from '@/components/charts/BarrasV';
@@ -6,7 +12,25 @@ import { BarrasV, type BarraV } from '@/components/charts/BarrasV';
 export const dynamic = 'force-dynamic';
 
 const NOMBRE_FASE: Record<number, string> = { 0: 'Apertura', 1: 'Medio juego', 2: 'Final' };
+const NOMBRE_CLASE: Record<string, string> = {
+  rapid: 'Rápida',
+  blitz: 'Blitz',
+  bullet: 'Bala',
+  daily: 'Correspondencia',
+};
+const ORDEN_CLASE = ['rapid', 'blitz', 'bullet', 'daily'] as const;
 const ORDEN_BUCKET = ['<3s', '3-10s', '10-30s', '>30s'] as const;
+
+/**
+ * La unica clase de tiempo que describe esta pagina. Es la misma decision que ya tomo /errores:
+ * el plan de entrenamiento es de rapida, y el uso del reloj en bala no dice nada sobre si
+ * piensas o te apuras, porque en bala no hay tiempo para pensar.
+ *
+ * Hasta la revision integral esta pagina no filtraba nada, y las vistas de 0006 tampoco tenian
+ * la dimension: con 1.850 partidas de bala y 5.660 de blitz contra 2.588 de rapida, lo que
+ * /reloj describia era la bala.
+ */
+const CLASE = 'rapid';
 
 function segundos(ms: number | null): string {
   if (ms === null) return '—';
@@ -31,12 +55,17 @@ const COL_N = (
  * cruza /errores.
  */
 export default async function RelojPage() {
-  const [porJugada, porFase, distribucion, timeouts] = await Promise.all([
-    moveTimeByPly(),
-    moveTimeByPhase(),
-    moveTimeDistribution(),
-    timeoutMoment(),
+  const [porJugadaTodas, porFaseTodas, distribucionTodas, timeoutsTodos] = await Promise.all([
+    tiempoPorJugada(),
+    tiempoPorFase(),
+    distribucionDeTiempo(),
+    momentoDelTimeout(),
   ]);
+
+  const porJugada = porJugadaTodas.filter((p) => p.time_class === CLASE);
+  const porFase = porFaseTodas.filter((f) => f.time_class === CLASE);
+  const distribucion = distribucionTodas.filter((d) => d.time_class === CLASE);
+  const timeouts = timeoutsTodos.filter((t) => t.time_class === CLASE);
 
   const totalTimeouts = timeouts.reduce((acc, t) => acc + (t.n_games ?? 0), 0);
 
@@ -65,13 +94,31 @@ export default async function RelojPage() {
   });
 
   const bajo3s = barrasDistribucion.find((b) => b.etiqueta === '<3s')?.valor ?? 0;
+  const jugadasMedidas = porJugada.reduce((acc, p) => acc + (p.n ?? 0), 0);
+
+  // La comparacion entre clases se agrega por clase (sumando sus fases) y va al final, en una
+  // tabla: es contexto, no el tema de la pagina. Se pondera por `n` porque el promedio de tres
+  // promedios de fase no es el promedio de la clase.
+  const resumenPorClase = ORDEN_CLASE.map((clase) => {
+    const filas: TiempoPorFase[] = porFaseTodas.filter((f) => f.time_class === clase);
+    const n = filas.reduce((acc, f) => acc + (f.n ?? 0), 0);
+    const sumaMs = filas.reduce((acc, f) => acc + (f.avg_move_time_ms ?? 0) * (f.n ?? 0), 0);
+    const bajo3 = filas.reduce((acc, f) => acc + (f.pct_under_3s_bruto ?? 0) * (f.n ?? 0), 0);
+    return {
+      clase,
+      n,
+      promedioMs: n > 0 ? sumaMs / n : null,
+      bajo3s: n > 0 ? bajo3 / n : null,
+    };
+  }).filter((r) => r.n > 0);
 
   return (
     <Pagina
       titulo="Reloj"
       subtitulo={
         <>
-          Dónde piensas y dónde te apuras. El cruce con la calidad de esas jugadas — si las rápidas son además las malas — está en Errores.
+          Dónde piensas y dónde te apuras, <strong>solo en partidas de rápida</strong>. El cruce
+          con la calidad de esas jugadas — si las rápidas son además las malas — está en Errores.
         </>
       }
     >
@@ -80,28 +127,28 @@ export default async function RelojPage() {
           <Stat
             etiqueta="Jugadas bajo 3 segundos"
             valor={`${bajo3s.toFixed(1)}%`}
-            detalle={`de ${totalDistribucion.toLocaleString('es-CL')} jugadas con reloj`}
+            detalle={`de ${totalDistribucion.toLocaleString('es-CL')} jugadas de rápida con reloj`}
             tono={bajo3s > 50 ? 'critico' : undefined}
           />
           <Stat
             etiqueta="Derrotas por tiempo"
             valor={totalTimeouts.toLocaleString('es-CL')}
-            detalle="partidas perdidas con el reloj en cero"
+            detalle="partidas de rápida perdidas con el reloj en cero"
           />
           <Stat
             etiqueta="Jugadas medidas"
-            valor={porJugada.reduce((acc, p) => acc + (p.n ?? 0), 0).toLocaleString('es-CL')}
-            detalle="hasta el ply 60"
+            valor={jugadasMedidas.toLocaleString('es-CL')}
+            detalle="tuyas, en rápida, hasta el ply 60"
           />
         </div>
 
         <Panel
           title="Dónde se va el tiempo"
-          subtitle="Tiempo promedio por número de jugada (ply), hasta el 60"
+          subtitle="Tiempo promedio por número de jugada (ply) en rápida, hasta el 60"
         >
           {porJugada.length === 0 ? (
             <EmptyState
-              titulo="Sin jugadas extraídas todavía"
+              titulo="Sin jugadas de rápida extraídas todavía"
               detalle="Corre `pnpm moves:extract` para poblar la tabla de jugadas desde el PGN."
             />
           ) : (
@@ -134,17 +181,17 @@ export default async function RelojPage() {
         </Panel>
 
         <div className="grid gap-6 lg:grid-cols-2">
-          <Panel title="Distribución de tiempos" subtitle="Qué proporción de tus jugadas cae en cada rango">
+          <Panel title="Distribución de tiempos" subtitle="Qué proporción de tus jugadas de rápida cae en cada rango">
             {distribucion.length === 0 ? (
-              <EmptyState titulo="Sin jugadas extraídas todavía" />
+              <EmptyState titulo="Sin jugadas de rápida extraídas todavía" />
             ) : (
               <BarrasH datos={barrasDistribucion} max={100} />
             )}
           </Panel>
 
-          <Panel title="Por fase" subtitle="Porcentaje de jugadas bajo 3 segundos, con la cota de Wilson">
+          <Panel title="Por fase" subtitle="Porcentaje de jugadas bajo 3 segundos en rápida, con la cota de Wilson">
             {porFase.length === 0 ? (
-              <EmptyState titulo="Sin jugadas extraídas todavía" />
+              <EmptyState titulo="Sin jugadas de rápida extraídas todavía" />
             ) : (
               <Tabla
                 aligns={['text', 'num', 'num', 'num']}
@@ -169,10 +216,10 @@ export default async function RelojPage() {
 
         <Panel
           title="Se te acaba el tiempo"
-          subtitle="En qué fase estabas jugando en las derrotas por tiempo"
+          subtitle="En qué fase estabas jugando en las derrotas de rápida por tiempo"
         >
           {timeouts.length === 0 ? (
-            <EmptyState titulo="Sin derrotas por tiempo registradas todavía" />
+            <EmptyState titulo="Sin derrotas de rápida por tiempo registradas todavía" />
           ) : (
             <Tabla
               aligns={['text', 'num', 'num']}
@@ -193,6 +240,36 @@ export default async function RelojPage() {
               })}
             </Tabla>
           )}
+        </Panel>
+
+        <Panel
+          title="Las otras clases, para comparar"
+          subtitle="Todo lo de arriba es rápida. Esto es lo que pasa en los formatos que no entrena"
+        >
+          {resumenPorClase.length === 0 ? (
+            <EmptyState titulo="Sin jugadas extraídas todavía" />
+          ) : (
+            <Tabla
+              aligns={['text', 'num', 'num', 'num']}
+              headers={['Clase', COL_N, 'Tiempo promedio', '% bajo 3s']}
+            >
+              {resumenPorClase.map((r) => (
+                <Fila key={r.clase} atenuada={r.n < 20}>
+                  <Td>
+                    {NOMBRE_CLASE[r.clase] ?? r.clase}
+                    {r.clase === CLASE ? <span className="ml-2 text-2xs text-apagado">esta página</span> : null}
+                  </Td>
+                  <Td num>{r.n.toLocaleString('es-CL')}</Td>
+                  <Td num>{segundos(r.promedioMs === null ? null : Math.round(r.promedioMs))}</Td>
+                  <Td num>{pct(r.bajo3s)}</Td>
+                </Fila>
+              ))}
+            </Tabla>
+          )}
+          <p className="mt-3 text-2xs text-apagado">
+            El % bajo 3s de esta tabla es el bruto, no la cota de Wilson: acá sirve para describir
+            cada clase, no para ordenarlas entre sí.
+          </p>
         </Panel>
       </div>
     </Pagina>

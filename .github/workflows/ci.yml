@@ -53,10 +53,14 @@ jobs:
       # `revision.integration.test.ts` prueba los cuatro chequeos que agrego la migracion 0011
       # EN ROJO, con la forma exacta de los datos que la revision integral encontro en
       # produccion: un invariante que nunca se probo en rojo no es un invariante.
+      #
+      # `reloj-por-clase.integration.test.ts` hace lo mismo con la 0012: prueba que la vista
+      # VIEJA mezcla bala con rapida en un promedio que no describe a ninguna de las dos, y que
+      # la nueva no. Sin la mitad "en rojo" seria solo un test de que el SQL compila.
       - name: Ingesta y chequeos de calidad contra Postgres
         env:
           TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
-        run: pnpm exec vitest run tests/ingest.integration.test.ts tests/extract-moves.integration.test.ts tests/analyze.integration.test.ts tests/sql-functions.integration.test.ts tests/revision.integration.test.ts
+        run: pnpm exec vitest run tests/ingest.integration.test.ts tests/extract-moves.integration.test.ts tests/analyze.integration.test.ts tests/sql-functions.integration.test.ts tests/revision.integration.test.ts tests/reloj-por-clase.integration.test.ts
 
   # Los mismos diez chequeos, pero contra la base de VERDAD. El job de integracion ya los
   # verifica siempre sobre un Postgres efimero; este agrega el estado real de los datos de

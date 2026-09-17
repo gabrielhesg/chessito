@@ -20,10 +20,10 @@ export type HealthSummary = Views['v_health_summary']['Row'];
 export type GamesByMonth = Views['v_games_by_month']['Row'];
 export type AnalysisCoverage = Views['v_analysis_coverage']['Row'];
 export type CoberturaAnalisis = Views['v_cobertura_analisis']['Row'];
-export type MoveTimeByPly = Views['v_move_time_by_ply']['Row'];
-export type MoveTimeByPhase = Views['v_move_time_by_phase']['Row'];
-export type MoveTimeDistribution = Views['v_move_time_distribution']['Row'];
-export type TimeoutMoment = Views['v_timeout_moment']['Row'];
+export type TiempoPorJugada = Views['v_tiempo_por_jugada']['Row'];
+export type TiempoPorFase = Views['v_tiempo_por_fase']['Row'];
+export type DistribucionDeTiempo = Views['v_distribucion_de_tiempo']['Row'];
+export type MomentoDelTimeout = Views['v_momento_del_timeout']['Row'];
 export type ErrorsByPhase = Views['v_errors_by_phase']['Row'];
 export type ErrorsByMoveTime = Views['v_errors_by_move_time']['Row'];
 export type JobRun = Database['public']['Tables']['job_runs']['Row'];
@@ -179,32 +179,42 @@ export async function errorsDiagnostic(): Promise<ErrorsDiagnostic> {
   };
 }
 
+/**
+ * Las cuatro lecturas de /reloj. Traen TODAS las clases de tiempo y la pagina filtra la suya,
+ * igual que ya hacia /errores con `v_errors_by_phase`: asi la tabla de comparacion entre clases
+ * no cuesta una consulta extra.
+ *
+ * Reemplazan a las de `v_move_time_*` (0006), que no tenian dimension de clase y por lo tanto
+ * promediaban una partida de bala con una de 10 minutos. Las vistas viejas siguen existiendo en
+ * la base porque no se edita una migracion aplicada, pero ya no las lee nadie.
+ */
+
 /** Tiempo gastado por numero de jugada. Solo hasta el ply 60: mas alla la muestra es minuscula. */
-export async function moveTimeByPly(): Promise<MoveTimeByPly[]> {
+export async function tiempoPorJugada(): Promise<TiempoPorJugada[]> {
   const { data, error } = await supabaseAdmin()
-    .from('v_move_time_by_ply')
+    .from('v_tiempo_por_jugada')
     .select('*')
     .lte('ply', 60)
     .order('ply');
-  if (error) fail('v_move_time_by_ply', error.message);
+  if (error) fail('v_tiempo_por_jugada', error.message);
   return data ?? [];
 }
 
-export async function moveTimeByPhase(): Promise<MoveTimeByPhase[]> {
-  const { data, error } = await supabaseAdmin().from('v_move_time_by_phase').select('*').order('phase');
-  if (error) fail('v_move_time_by_phase', error.message);
+export async function tiempoPorFase(): Promise<TiempoPorFase[]> {
+  const { data, error } = await supabaseAdmin().from('v_tiempo_por_fase').select('*').order('phase');
+  if (error) fail('v_tiempo_por_fase', error.message);
   return data ?? [];
 }
 
-export async function moveTimeDistribution(): Promise<MoveTimeDistribution[]> {
-  const { data, error } = await supabaseAdmin().from('v_move_time_distribution').select('*');
-  if (error) fail('v_move_time_distribution', error.message);
+export async function distribucionDeTiempo(): Promise<DistribucionDeTiempo[]> {
+  const { data, error } = await supabaseAdmin().from('v_distribucion_de_tiempo').select('*');
+  if (error) fail('v_distribucion_de_tiempo', error.message);
   return data ?? [];
 }
 
-export async function timeoutMoment(): Promise<TimeoutMoment[]> {
-  const { data, error } = await supabaseAdmin().from('v_timeout_moment').select('*').order('phase');
-  if (error) fail('v_timeout_moment', error.message);
+export async function momentoDelTimeout(): Promise<MomentoDelTimeout[]> {
+  const { data, error } = await supabaseAdmin().from('v_momento_del_timeout').select('*').order('phase');
+  if (error) fail('v_momento_del_timeout', error.message);
   return data ?? [];
 }
 
