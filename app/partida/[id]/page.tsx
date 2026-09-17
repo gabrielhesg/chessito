@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { gameDetail, openingNames } from '@/lib/data';
+import { gameDetail, openingNames, revisionDePartida } from '@/lib/data';
+import { despojarDelMotor, esModoCiego } from '@/lib/reviews/ciego';
 import { accuracyDePartida } from '@/lib/analysis/accuracy';
 import { formatTimeControl } from '@/lib/chess/timecontrol';
 import { env } from '@/lib/env';
@@ -11,6 +12,15 @@ import { GameReview, type JugadaUI } from '@/components/GameReview';
 export const dynamic = 'force-dynamic';
 
 const NOMBRE_FASE: Record<number, string> = { 0: 'la apertura', 1: 'el medio juego', 2: 'el final' };
+
+/** Los mismos cinco motivos de `MarcarRevision`, para leerlos de vuelta. */
+const NOMBRE_MOTIVO: Record<string, string> = {
+  colgue_material: 'Colgué material',
+  no_supe_que_hacer: 'No supe qué hacer',
+  me_quede_sin_tiempo: 'Me quedé sin tiempo',
+  me_superaron_en_la_apertura: 'Me superaron en la apertura',
+  otro: 'Otra cosa',
+};
 
 /** Mediana, no promedio: un solo "pensar tres minutos" corre el promedio de toda la partida. */
 function mediana(valores: readonly number[]): number | null {
@@ -28,6 +38,7 @@ function Mini({
   sufijo,
   tono,
   ayuda,
+  oculto,
 }: {
   etiqueta: string;
   valor: string;
@@ -35,7 +46,10 @@ function Mini({
   tono?: 'critico';
   /** Que significa el numero. Un numero grande en rojo sin nombre no se entiende y no se cree. */
   ayuda?: ReactNode;
+  /** En modo ciego la tarjeta no se muestra vacia: se va. Un "—" invita a preguntarse por que. */
+  oculto?: boolean;
 }) {
+  if (oculto) return null;
   return (
     <div className="rounded-xl border border-borde bg-panel px-3.5 py-3">
       {/* `div` y no `p`: `Ayuda` renderiza un `<details>/<summary>`, y `<details>` no puede ser
@@ -66,10 +80,10 @@ export default async function PartidaPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ ply?: string }>;
+  searchParams: Promise<{ ply?: string; revelar?: string }>;
 }) {
   const { id } = await params;
-  const { ply } = await searchParams;
+  const { ply, revelar } = await searchParams;
   const numeroId = Number.parseInt(id, 10);
   if (!Number.isFinite(numeroId)) notFound();
 
@@ -80,20 +94,43 @@ export default async function PartidaPage({
   const nombres = game.opening_id ? await openingNames([game.opening_id]) : new Map<string, string>();
   const apertura = game.opening_id ? (nombres.get(game.opening_id) ?? 'Sin resolver') : 'Sin resolver';
 
-  const jugadas: JugadaUI[] = moves.map((m) => ({
-    ply: m.ply,
-    san: m.san,
-    uci: m.uci,
-    bestUci: m.best_uci,
-    isMine: m.is_mine,
-    isBook: m.is_book,
-    evalCp: m.eval_cp,
-    mateIn: m.mate_in,
-    cpLoss: m.cp_loss,
-    classification: m.classification,
-    moveTimeMs: m.move_time_ms,
-    clockMs: m.clock_ms,
-  }));
+  // ============================================================
+  // Modo "Primero yo"
+  // ============================================================
+  // El ritual del plan de entrenamiento es analizar la derrota SIN motor antes de verlo. Hasta
+  // ahora esta pantalla no solo no lo soportaba: lo saboteaba, porque abria con la precision,
+  // los glifos `??` y "tu peor jugada fue Nxf7" antes de que el alumno mirara el tablero.
+  //
+  // Solo se activa en derrotas de RAPIDA sin revisar. Una victoria no tiene ritual, y revisar
+  // bala no esta en el plan. `?revelar=1` es el escape para volver a mirar sin marcar nada.
+  const revision = await revisionDePartida(numeroId).catch(() => null);
+  const modoCiego = esModoCiego({
+    timeClass: game.time_class,
+    result: game.result,
+    yaRevisada: revision !== null,
+    revelar: revelar === '1',
+  });
+
+  // El despojo es del SERVIDOR, no un `display: none`: en modo ciego la evaluacion, la
+  // clasificacion y la mejor jugada NO viajan al navegador. Mirar el HTML no es una forma de
+  // hacer trampa.
+  const jugadas: JugadaUI[] = moves.map((m) => {
+    const completa: JugadaUI = {
+      ply: m.ply,
+      san: m.san,
+      uci: m.uci,
+      bestUci: m.best_uci,
+      isMine: m.is_mine,
+      isBook: m.is_book,
+      evalCp: m.eval_cp,
+      mateIn: m.mate_in,
+      cpLoss: m.cp_loss,
+      classification: m.classification,
+      moveTimeMs: m.move_time_ms,
+      clockMs: m.clock_ms,
+    };
+    return modoCiego ? despojarDelMotor(completa) : completa;
+  });
 
   const mias = moves.filter((m) => m.is_mine);
   const precision = accuracyDePartida(
@@ -115,13 +152,84 @@ export default async function PartidaPage({
     .filter((m) => m.move_time_ms !== null)
     .sort((a, b) => (b.move_time_ms ?? 0) - (a.move_time_ms ?? 0))[0];
 
-  const analizada = moves.some((m) => m.eval_cp !== null);
+  const hayAnalisis = moves.some((m) => m.eval_cp !== null);
+  // `analizada` gobierna todo lo que la pagina muestra del motor. En modo ciego es false aunque
+  // el analisis exista: es la forma de que un solo booleano apague las tres tarjetas de arriba,
+  // las "Peones perdidos" y el panel de momentos clave, sin repetir la condicion en cada uno.
+  const analizada = hayAnalisis && !modoCiego;
+
+  // El ply que el motor senala como el error que definio la partida. Viaja al cliente para
+  // quedar congelado en `game_reviews.ply_del_motor` al confirmar.
+  const plyDelMotor = peorJugada?.ply ?? null;
   const resultado = game.result === 'win' ? 'Victoria' : game.result === 'loss' ? 'Derrota' : 'Tablas';
 
   const medianaMs = mediana(mias.filter((m) => m.move_time_ms !== null).map((m) => m.move_time_ms ?? 0));
   const perdidaTotal = mias
     .filter((m) => !m.is_book && !m.is_decided)
     .reduce((suma, m) => suma + (m.cp_loss ?? 0), 0);
+
+  // ============================================================
+  // El contraste: lo que creiste contra lo que dice el motor
+  // ============================================================
+  // Esto ES el ejercicio, no el informe. La distancia entre el ply que marcaste y el que senala
+  // el motor es lo que ensena: acertar el motivo con el ply equivocado significa que reconoces
+  // el error pero no cuando empezo, que es un problema distinto y se estudia distinto.
+  const sanDe = (plyBuscado: number | null): string | null =>
+    plyBuscado === null ? null : (moves.find((m) => m.ply === plyBuscado)?.san ?? null);
+
+  const plyMarcado = revision?.ply_marcado ?? null;
+  const plyMotorGuardado = revision?.ply_del_motor ?? null;
+  const distancia =
+    plyMarcado !== null && plyMotorGuardado !== null ? Math.abs(plyMarcado - plyMotorGuardado) : null;
+
+  const contraste =
+    plyMarcado === null || plyMotorGuardado === null ? null : (
+      <Panel title="Lo que creíste, y lo que dice el motor">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-xl border border-borde bg-panel px-3.5 py-3">
+            <p className="eyebrow">Marcaste</p>
+            <p className="mt-1.5 text-[17px] font-semibold">
+              jugada {Math.ceil(plyMarcado / 2)}
+              {sanDe(plyMarcado) ? (
+                <Link href={`?ply=${plyMarcado}`} className="ml-2 font-mono text-acento hover:underline">
+                  {sanDe(plyMarcado)}
+                </Link>
+              ) : null}
+            </p>
+            {revision?.motivo ? (
+              <p className="mt-1 text-[12.5px] text-tenue">{NOMBRE_MOTIVO[revision.motivo]}</p>
+            ) : null}
+          </div>
+          <div className="rounded-xl border border-borde bg-panel px-3.5 py-3">
+            <p className="eyebrow">El motor dice</p>
+            <p className="mt-1.5 text-[17px] font-semibold">
+              jugada {Math.ceil(plyMotorGuardado / 2)}
+              {sanDe(plyMotorGuardado) ? (
+                <Link href={`?ply=${plyMotorGuardado}`} className="ml-2 font-mono text-acento hover:underline">
+                  {sanDe(plyMotorGuardado)}
+                </Link>
+              ) : null}
+            </p>
+            <p className="mt-1 text-[12.5px] text-tenue">tu jugada más cara de la partida</p>
+          </div>
+        </div>
+        <p className="mt-3.5 text-sm leading-relaxed">
+          {distancia === 0 ? (
+            <>Le achuntaste al ply exacto: viste el error mientras lo cometías.</>
+          ) : distancia !== null && distancia <= 4 ? (
+            <>
+              Te separan {distancia} {distancia === 1 ? 'ply' : 'plies'} — estabas en la zona
+              correcta de la partida.
+            </>
+          ) : (
+            <>
+              Te separan {distancia} plies. La partida ya venía decidida antes de donde la
+              marcaste: mira qué pasó en la jugada {Math.ceil(plyMotorGuardado / 2)}.
+            </>
+          )}
+        </p>
+      </Panel>
+    );
 
   const fecha = new Date(game.end_time).toLocaleString('es-CL', {
     timeZone: 'America/Santiago',
@@ -183,12 +291,14 @@ export default async function PartidaPage({
       }
     >
       <div className="space-y-6">
-        {analizada ? null : (
+        {hayAnalisis ? null : (
           <p className="rounded-xl border border-aviso/40 bg-aviso/10 px-3.5 py-2.5 text-sm text-aviso">
             Esta partida todavía no la analizó el motor. Puedes navegarla igual, pero sin
             evaluación ni clasificación de jugadas.
           </p>
         )}
+
+        {contraste}
 
         <GameReview
           jugadas={jugadas}
@@ -198,6 +308,7 @@ export default async function PartidaPage({
           jugadorNegras={game.my_color === 'white' ? game.opp_username : env.CHESSCOM_USERNAME}
           orientacion={game.my_color === 'black' ? 'black' : 'white'}
           plyInicial={Number.parseInt(ply ?? '0', 10) || 0}
+          ciego={modoCiego ? { plyDelMotor } : undefined}
           resumen={
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <Mini
@@ -212,6 +323,7 @@ export default async function PartidaPage({
               <Mini
                 etiqueta="Peones perdidos"
                 valor={analizada ? (perdidaTotal / 100).toFixed(1) : '—'}
+                oculto={modoCiego}
                 tono={analizada ? 'critico' : undefined}
                 ayuda={
                   <>

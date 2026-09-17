@@ -8,6 +8,7 @@ import type { EvalLine } from '@/lib/engine/session';
 import { Badge, Button, Clasificacion, cpAPeones } from '@/components/ui';
 import { BarraVentaja } from '@/components/BarraVentaja';
 import { EnginePanel } from '@/components/EnginePanel';
+import { MarcarRevision } from '@/components/MarcarRevision';
 import { MoveList } from '@/components/MoveList';
 import { formatClock, relojesEnPly } from '@/lib/chess/clock';
 import { toWhitePerspective } from '@/lib/analysis/signs';
@@ -202,6 +203,7 @@ export function GameReview({
   baseSeconds,
   jugadorBlancas,
   jugadorNegras,
+  ciego,
 }: {
   jugadas: readonly JugadaUI[];
   orientacion: 'white' | 'black';
@@ -214,6 +216,13 @@ export function GameReview({
   baseSeconds: number;
   jugadorBlancas: string;
   jugadorNegras: string;
+  /**
+   * Modo "Primero yo". Cuando viene, la pantalla NO muestra nada derivado del motor: ni barra de
+   * ventaja, ni grafico de evaluacion, ni panel del motor. Las jugadas ya llegan sin evaluacion
+   * porque el servidor las despoja antes de mandarlas — no es un `display: none`, el dato no
+   * viaja al navegador.
+   */
+  ciego?: { plyDelMotor: number | null };
 }) {
   const inicial = useMemo<Estado>(() => {
     const tree = buildFromMainLine<JugadaUI>(
@@ -243,10 +252,12 @@ export function GameReview({
   // para que apagarlo a proposito no se deshaga al mover otra pieza.
   const autoEncendidoRef = useRef(false);
   useEffect(() => {
-    if (enPrincipal || autoEncendidoRef.current) return;
+    // En modo ciego el motor no se enciende NUNCA, ni siquiera al salirse de la partida real:
+    // seria la respuesta por la puerta de atras, a un movimiento de raton de distancia.
+    if (ciego || enPrincipal || autoEncendidoRef.current) return;
     autoEncendidoRef.current = true;
     setMotorEncendido(true);
-  }, [enPrincipal]);
+  }, [ciego, enPrincipal]);
 
   const evaluacion = evaluacionVisible({ datos, lineaMotor: motor.lines[0], fen: fenActual });
 
@@ -332,11 +343,13 @@ export function GameReview({
           activo={orientacion === 'white' ? !mueveBlancas : mueveBlancas}
         />
         <div className="mt-1.5 flex items-stretch gap-2.5">
-          <BarraVentaja
-            evalCp={evaluacion.evalCp}
-            mateIn={evaluacion.mateIn}
-            orientacion={orientacion}
-          />
+          {ciego ? null : (
+            <BarraVentaja
+              evalCp={evaluacion.evalCp}
+              mateIn={evaluacion.mateIn}
+              orientacion={orientacion}
+            />
+          )}
           <div
             className="min-w-0 flex-1 overflow-hidden rounded-xl"
             style={{ backgroundColor: COLOR_CASILLA_OSCURA, maxWidth: LADO_TABLERO }}
@@ -463,7 +476,14 @@ export function GameReview({
       </div>
 
       <div className="flex min-w-0 flex-col gap-[18px]">
-        {puntosEval.some((p) => p.evalCp !== null) ? (
+        {ciego ? (
+          <MarcarRevision
+            gameId={gameId}
+            plyActual={plyActual}
+            sanActual={datos?.san ?? null}
+            plyDelMotor={ciego.plyDelMotor}
+          />
+        ) : puntosEval.some((p) => p.evalCp !== null) ? (
           <div className={enPrincipal ? '' : 'opacity-60'}>
             <div className="mb-2 flex items-baseline justify-between gap-2">
               <p className="eyebrow">Evaluación</p>
@@ -478,6 +498,7 @@ export function GameReview({
           </p>
         )}
 
+        {ciego ? null : (
         <EnginePanel
           status={motor.status}
           lines={motor.lines}
@@ -496,6 +517,7 @@ export function GameReview({
             })
           }
         />
+        )}
 
         {resumen}
 
