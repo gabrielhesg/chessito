@@ -159,3 +159,60 @@ de alto impacto, y las siguientes quedan como prompts autocontenidos en
 
 La dependencia crítica está anotada en `PLAN-REVISION.md` §8: la Fase 3 (las dos debilidades
 medidas, y la North Star) no se puede construir sin la cobertura que producen R3 y F2-05.
+
+---
+
+# Fase 2 · El ciclo de la derrota
+
+Cierra el lazo entre perder, revisar y entrenar. Cuatro ítems construidos; el quinto (F2-05) es
+una corrida del motor, no código.
+
+| ID | Qué se construyó | Criterio | Estado |
+|---|---|---|---|
+| F2-04 | `/reloj` separa clases de tiempo (0012) | ninguna cifra mezcla clases | ✅ 6 tests |
+| F2-01 | `game_reviews` y la cola de derrotas (0013) | marcar revisada quita la tarea | ✅ 7 tests |
+| F2-02 | Modo "Primero yo" en `/partida/[id]` | ningún número del motor hasta confirmar | ✅ 9 tests |
+| F2-03 | Sesión dirigida, tanda por partida y "¿qué pasó?" (0014) | la prioridad gana sobre la fecha | ✅ 6 tests |
+| F2-05 | Backfill de rápida | ≥300 de rápida en `done` | ✅ 1.628 y subiendo |
+
+357 tests en verde. `typecheck`, `lint` y `build` también. Capturas a 390 px y 1280 px de las seis
+pantallas tocadas, en `docs/review/capturas/fase2/`.
+
+## Lo que cambió respecto del plan, y por qué
+
+1. **La cola de derrotas se acotó a 30 días.** El plan decía "máximo tres en la portada, y si son
+   40 decir «y 37 más»". Medido en producción: son **1.191**, así que el mensaje habría sido "y
+   1.188 más" — la deuda completa que la regla manda no mostrar. La distribución (1 en 7 días, 6
+   en 30, 16 en 90) decidió la ventana. La lista completa vive en `/registro`.
+
+2. **El concepto elegido se guarda en una segunda escritura**, no como campo de `recordAttempt`.
+   El intento tiene que quedar guardado en el momento del fallo porque alimenta SM-2; esperar la
+   respuesta de la pregunta significaría perder el intento entero si se cierra la pestaña.
+
+3. **Las opciones de "¿qué pasó?" se barajan con semilla estable por ejercicio.** Fijas harían que
+   la correcta se aprenda por posición; al azar en cada render harían imposible tocar la que
+   querías.
+
+4. **No se implementó el "tema de la semana"** como segundo nivel de prioridad: es F4-02, y sin él
+   la cola tiene dos niveles en vez de tres. Los chips de patrón cubren el caso manual.
+
+## Supuestos tomados
+
+1. **Siete días para la prioridad de la sesión, treinta para la cola de revisión.** Son ventanas
+   distintas a propósito: revisar es saldar una cola, entrenar es aprovechar que todavía recuerdas
+   la partida.
+2. **El botón de "entrenar esta partida" sirve la tanda aunque SM-2 no la tuviera programada**,
+   mismo criterio que `puzzleAt` desde la Fase 6.
+3. **`is_book` se conserva en modo ciego.** Sale de `openings`, no de Stockfish.
+4. **`v_reconocimiento` lee la tasa sobre lo contestado, no sobre todos los fallos.** No contestar
+   es otra cosa que no reconocer el error.
+5. **Las capturas salen del arnés con datos reales de producción más tres filas inventadas** (dos
+   derrotas extra en la cola, para ver el bloque con más de una fila) y las vistas de 0012-0014
+   derivadas en JavaScript, porque esas migraciones todavía no están aplicadas en producción.
+   Sirven para verificar **layout**, no cifras.
+
+## Lo que hay que operar después de mergear
+
+1. **Aplicar 0012, 0013 y 0014** con el workflow `migraciones` en modo `aplicar`, desde `main`.
+   Sin ellas, `/reloj`, la portada y el entrenador leen vistas que no existen.
+2. Nada más. El motor ya está corriendo y la ingesta encadena `moves:extract` sola.

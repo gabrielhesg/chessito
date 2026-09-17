@@ -1075,3 +1075,45 @@ despues de mergear, igual que se hizo con `moves`, `analyze` y `puzzles`. Y qued
 de consola en `/partida/[id]`: el `key` que falta esta dentro de `react-chessboard@5.12.1`, que
 mapea sus flechas sin el; React la atribuye a `GameReview` porque es el propietario mas cercano,
 pero el codigo es de la libreria y la advertencia no sale en un build de produccion.
+
+## Estado al terminar la Fase 2 de la revision integral
+
+El lazo entre perder, revisar y entrenar quedo cerrado. Tres migraciones nuevas (`0012`, `0013`,
+`0014`) y ninguna pantalla nueva.
+
+| Pieza | Donde |
+|---|---|
+| Las cuatro vistas de `/reloj`, con `time_class` | `supabase/migrations/0012_reloj_por_clase.sql` |
+| La revision de una partida | `0013_revision_de_partida.sql`, `lib/reviews/actions.ts` |
+| Las dos decisiones del modo ciego, puras | `lib/reviews/ciego.ts` |
+| Los dos gestos del ritual | `components/MarcarRevision.tsx` |
+| La cola con prioridad y el autodiagnostico | `0014_sesion_dirigida.sql` |
+| La pregunta de un tap al fallar | `components/PreguntaQuePaso.tsx` |
+
+**El modo ciego despoja en el SERVIDOR.** La promesa de "Primero yo" es que la evaluacion no
+viaja al navegador, asi que `eval_cp`, `mate_in`, `cp_loss`, `classification` y `best_uci` se
+ponen en null antes de mandar las jugadas. Un `display: none` se veria igual en pantalla y seria
+falso. Por eso las dos decisiones viven en `lib/reviews/ciego.ts` como funciones puras: una
+promesa asi hay que poder probarla. El motor del navegador tampoco se enciende ahi, ni siquiera
+al salirse de la linea principal, que es cuando se autoenciende desde la Fase 9.
+
+**Una ventana de tiempo no es un detalle de presentacion.** La cola de derrotas sin revisar son
+30 dias y la prioridad de la sesion son 7, y las dos salieron de medir. Sin ventana, la cola son
+1.191 partidas y la portada pasa a mostrar una deuda, que es la forma mas rapida de que no se
+empiece — la misma leccion que los 397 ejercicios vencidos. Si agregas una cola, mide su largo
+real antes de decidir que mostrar.
+
+**El intento se guarda al fallar, no al contestar la pregunta.** `recordAttempt` alimenta SM-2 y
+no puede perderse por cerrar la pestana; `concepto_elegido` va como una segunda escritura que, si
+falla, no rompe nada. La regla general: lo que sostiene el estado del ejercicio se guarda primero
+y lanza; lo que es diagnostico se guarda despues y solo se loguea.
+
+**`v_reconocimiento` lee su tasa sobre lo CONTESTADO.** No contestar la pregunta es otra cosa que
+no reconocer el error, y meter los dos en el mismo denominador borra la distincion que la vista
+existe para medir.
+
+**Un elemento que cruza la frontera servidor -> cliente necesita `key`.** `/partida/[id]` abria
+con un error de consola de React desde antes de esta revision: el bloque `resumen` se serializa y
+`GameReview` lo renderiza dentro de un arreglo de hijos que, ya deserializado, React trata como
+lista dinamica. La clave va en el elemento que se pasa, no en sus hijos. Ningun test lo detecto
+porque ningun test mira la consola del navegador: eso lo encuentran las capturas.
