@@ -9,6 +9,41 @@ export type Database = {
   }
   public: {
     Tables: {
+      game_reviews: {
+        Row: {
+          game_id: number
+          ply_marcado: number | null
+          motivo: Database["public"]["Enums"]["review_motivo"] | null
+          nota: string | null
+          ply_del_motor: number | null
+          creado_en: string
+        }
+        Insert: {
+          game_id: number
+          ply_marcado?: number | null
+          motivo?: Database["public"]["Enums"]["review_motivo"] | null
+          nota?: string | null
+          ply_del_motor?: number | null
+          creado_en?: string
+        }
+        Update: {
+          game_id?: number
+          ply_marcado?: number | null
+          motivo?: Database["public"]["Enums"]["review_motivo"] | null
+          nota?: string | null
+          ply_del_motor?: number | null
+          creado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_reviews_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: true
+            referencedRelation: "games"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       games: {
         Row: {
           id: number
@@ -291,6 +326,7 @@ export type Database = {
           attempt_no: number
           hint_used: boolean
           concepto: string | null
+          concepto_elegido: string | null
         }
         Insert: {
           id?: number
@@ -302,6 +338,7 @@ export type Database = {
           attempt_no?: number
           hint_used?: boolean
           concepto?: string | null
+          concepto_elegido?: string | null
         }
         Update: {
           id?: number
@@ -313,6 +350,7 @@ export type Database = {
           attempt_no?: number
           hint_used?: boolean
           concepto?: string | null
+          concepto_elegido?: string | null
         }
         Relationships: [
           {
@@ -404,6 +442,21 @@ export type Database = {
           }
         ]
       }
+      schema_migrations: {
+        Row: {
+          version: string
+          applied_at: string
+        }
+        Insert: {
+          version: string
+          applied_at?: string
+        }
+        Update: {
+          version?: string
+          applied_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       v_after_result: {
@@ -460,6 +513,36 @@ export type Database = {
         }
         Relationships: []
       }
+      v_cola_de_ejercicios: {
+        Row: {
+          id: number | null
+          game_id: number | null
+          ply: number | null
+          fen: string | null
+          played_uci: string | null
+          best_uci: string | null
+          cp_loss: number | null
+          win_pct_loss: number | null
+          is_unique: boolean | null
+          theme: string | null
+          due_at: string | null
+          interval_days: number | null
+          ease: number | null
+          lapses: number | null
+          my_color: Database["public"]["Enums"]["game_color"] | null
+          solution_line: string[] | null
+          refutation_line: string[] | null
+          eval_best_cp: number | null
+          eval_played_cp: number | null
+          second_best_uci: string | null
+          second_best_cp: number | null
+          prioridad: number | null
+          partida_terminada: string | null
+          partida_time_class: string | null
+          partida_rival: string | null
+        }
+        Relationships: []
+      }
       v_conceptos_fallados: {
         Row: {
           concepto: string | null
@@ -496,6 +579,37 @@ export type Database = {
           offenders: number | null
           ok: boolean | null
           descripcion: string | null
+        }
+        Relationships: []
+      }
+      v_derrotas_sin_revisar: {
+        Row: {
+          id: number | null
+          end_time: string | null
+          opp_username: string | null
+          opp_rating: number | null
+          my_color: Database["public"]["Enums"]["game_color"] | null
+          time_control: string | null
+          termination: string | null
+          analysis_state: Database["public"]["Enums"]["analysis_state"] | null
+          n_total: number | null
+        }
+        Relationships: []
+      }
+      v_distribucion_de_tiempo: {
+        Row: {
+          time_class: string | null
+          phase: number | null
+          time_bucket: string | null
+          n: number | null
+        }
+        Relationships: []
+      }
+      v_ejercicios_por_partida: {
+        Row: {
+          game_id: number | null
+          n: number | null
+          n_vencidos: number | null
         }
         Relationships: []
       }
@@ -591,6 +705,15 @@ export type Database = {
         }
         Relationships: []
       }
+      v_momento_del_timeout: {
+        Row: {
+          time_class: string | null
+          phase: number | null
+          n_games: number | null
+          avg_ply: number | null
+        }
+        Relationships: []
+      }
       v_monthly_activity: {
         Row: {
           month_local: string | null
@@ -622,6 +745,15 @@ export type Database = {
           score_pct: number | null
           score_pct_lower: number | null
           rating_at_month_end: number | null
+        }
+        Relationships: []
+      }
+      v_motivos_de_derrota: {
+        Row: {
+          motivo: Database["public"]["Enums"]["review_motivo"] | null
+          n: number | null
+          coincide_con_el_motor: number | null
+          plies_de_diferencia: number | null
         }
         Relationships: []
       }
@@ -684,6 +816,36 @@ export type Database = {
         }
         Relationships: []
       }
+      v_reconocimiento: {
+        Row: {
+          concepto: string | null
+          n: number | null
+          reconocidos: number | null
+          contestados: number | null
+        }
+        Relationships: []
+      }
+      v_tiempo_por_fase: {
+        Row: {
+          time_class: string | null
+          phase: number | null
+          n: number | null
+          pct_under_3s_lower: number | null
+          pct_under_3s_bruto: number | null
+          avg_move_time_ms: number | null
+        }
+        Relationships: []
+      }
+      v_tiempo_por_jugada: {
+        Row: {
+          time_class: string | null
+          ply: number | null
+          n: number | null
+          avg_move_time_ms: number | null
+          median_move_time_ms: number | null
+        }
+        Relationships: []
+      }
       v_timeout_moment: {
         Row: {
           phase: number | null
@@ -713,6 +875,7 @@ export type Database = {
       game_result: "win" | "loss" | "draw"
       job_kind: "ingest" | "extract_moves" | "analyze" | "puzzles" | "backup"
       job_status: "running" | "success" | "failed"
+      review_motivo: "colgue_material" | "no_supe_que_hacer" | "me_quede_sin_tiempo" | "me_superaron_en_la_apertura" | "otro"
     }
     CompositeTypes: Record<PropertyKey, never>
   }

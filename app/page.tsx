@@ -17,7 +17,7 @@ import {
   openingPerformance,
   rapidasDeHoy,
   ratingMaximo,
-  ultimaDerrotaDeRapida,
+  derrotasSinRevisar,
 } from '@/lib/data';
 import { formatTimeControl } from '@/lib/chess/timecontrol';
 import { Button, Pagina, Progreso } from '@/components/ui';
@@ -52,6 +52,16 @@ function saludo(hora: number): string {
 }
 
 /** Una de las tres tareas del dia. Todas se pueden terminar HOY, y por eso se pueden marcar. */
+/** Fecha corta en la zona del unico usuario. `end_time` viene como texto ISO desde PostgREST. */
+function fechaCorta(endTime: string | null): string {
+  if (endTime === null) return '—';
+  return new Intl.DateTimeFormat('es-CL', {
+    timeZone: 'America/Santiago',
+    day: 'numeric',
+    month: 'short',
+  }).format(new Date(endTime));
+}
+
 function TareaDeHoy({
   hecha,
   titulo,
@@ -141,8 +151,11 @@ export default async function Portada() {
   // Lecturas que agrega la Fase 1 de la revision. Van con `.catch` porque ninguna es fatal: sin
   // ellas el bloque se degrada, y una portada caida por un dato de apoyo es peor que una
   // portada incompleta (misma leccion que /entrenador en la Fase 7).
-  const [derrotaPendiente, jugadasHoy, formatos, msPorEjercicio] = await Promise.all([
-    ultimaDerrotaDeRapida().catch(() => null),
+  const [colaDeDerrotas, jugadasHoy, formatos, msPorEjercicio] = await Promise.all([
+    // Tres, no la cola completa: mostrar la deuda es la forma mas rapida de que no se empiece.
+    // La vista ya acota a los ultimos 30 dias por la misma razon — sin esa ventana serian 1.191
+    // derrotas y este bloque diria "y 1.188 mas".
+    derrotasSinRevisar(3).catch(() => []),
     rapidasDeHoy().catch(() => 0),
     formatosDeRapida(mesActual).catch(() => []),
     medianaPorEjercicioMs().catch(() => null),
@@ -197,9 +210,15 @@ export default async function Portada() {
   // `rapidas >= META_MENSUAL && vencidos === 0 ? 2 : 0`: solo podia valer 0 o 2, dependia de la
   // meta del MES y de la deuda COMPLETA de repeticion espaciada, y seguia diciendo 0/2 despues
   // de jugar y de entrenar.
+  // La primera es la tarea del dia; las otras dos van en una lista chica debajo. `n_total` lo
+  // calcula la vista con una ventana, asi que "y 37 mas" no cuesta una segunda consulta.
+  const derrotaPendiente = colaDeDerrotas[0] ?? null;
+  const otrasDerrotas = colaDeDerrotas.slice(1);
+  const restantes = Math.max(0, (derrotaPendiente?.n_total ?? 0) - colaDeDerrotas.length);
+
   const tareas = [
     { hecha: metaDeHoy === 0 || jugadasHoy >= metaDeHoy },
-    { hecha: derrotaPendiente === null },
+    { hecha: colaDeDerrotas.length === 0 },
     { hecha: ejerciciosDeHoy === 0 },
   ];
   const hechas = tareas.filter((t) => t.hecha).length;
@@ -309,7 +328,7 @@ export default async function Portada() {
                 }
                 detalle={
                   derrotaPendiente
-                    ? `${formatTimeControl(derrotaPendiente.time_control)} · con ${derrotaPendiente.my_color === 'white' ? 'blancas' : 'negras'} · ${new Intl.DateTimeFormat('es-CL', { timeZone: 'America/Santiago', day: 'numeric', month: 'short' }).format(new Date(derrotaPendiente.end_time))}`
+                    ? `${derrotaPendiente.time_control === null ? 'rápida' : formatTimeControl(derrotaPendiente.time_control)} · con ${derrotaPendiente.my_color === 'white' ? 'blancas' : 'negras'} · ${fechaCorta(derrotaPendiente.end_time)}${restantes > 0 ? ` · y ${restantes} más sin revisar` : ''}`
                     : 'Al día con el ritual: toda derrota se analiza.'
                 }
                 accion={
@@ -323,6 +342,24 @@ export default async function Portada() {
                   ) : null
                 }
               />
+
+              {otrasDerrotas.length > 0 ? (
+                <li className="rounded-xl border border-borde bg-panel/60 px-4 py-2.5">
+                  <p className="text-2xs text-apagado">Después de esa</p>
+                  <ul className="mt-1.5 space-y-1">
+                    {otrasDerrotas.map((d) => (
+                      <li key={d.id} className="flex items-center justify-between gap-3 text-[12.5px]">
+                        <span className="min-w-0 truncate text-tenue">
+                          contra {d.opp_username} · {fechaCorta(d.end_time)}
+                        </span>
+                        <Link href={`/partida/${d.id}`} className="shrink-0 text-acento">
+                          Revisar
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              ) : null}
 
               <TareaDeHoy
                 hecha={tareas[2]?.hecha ?? false}

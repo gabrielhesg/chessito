@@ -20,15 +20,19 @@ export type HealthSummary = Views['v_health_summary']['Row'];
 export type GamesByMonth = Views['v_games_by_month']['Row'];
 export type AnalysisCoverage = Views['v_analysis_coverage']['Row'];
 export type CoberturaAnalisis = Views['v_cobertura_analisis']['Row'];
-export type MoveTimeByPly = Views['v_move_time_by_ply']['Row'];
-export type MoveTimeByPhase = Views['v_move_time_by_phase']['Row'];
-export type MoveTimeDistribution = Views['v_move_time_distribution']['Row'];
-export type TimeoutMoment = Views['v_timeout_moment']['Row'];
+export type TiempoPorJugada = Views['v_tiempo_por_jugada']['Row'];
+export type TiempoPorFase = Views['v_tiempo_por_fase']['Row'];
+export type DistribucionDeTiempo = Views['v_distribucion_de_tiempo']['Row'];
+export type MomentoDelTimeout = Views['v_momento_del_timeout']['Row'];
 export type ErrorsByPhase = Views['v_errors_by_phase']['Row'];
 export type ErrorsByMoveTime = Views['v_errors_by_move_time']['Row'];
 export type JobRun = Database['public']['Tables']['job_runs']['Row'];
 export type Game = Database['public']['Tables']['games']['Row'];
 export type Puzzle = Database['public']['Tables']['puzzles']['Row'];
+export type DerrotaSinRevisar = Views['v_derrotas_sin_revisar']['Row'];
+export type MotivoDeDerrota = Views['v_motivos_de_derrota']['Row'];
+export type GameReview = Database['public']['Tables']['game_reviews']['Row'];
+export type ReviewMotivo = Database['public']['Enums']['review_motivo'];
 
 function fail(view: string, message: string): never {
   throw new Error(`No se pudo leer ${view}: ${message}`);
@@ -179,32 +183,42 @@ export async function errorsDiagnostic(): Promise<ErrorsDiagnostic> {
   };
 }
 
+/**
+ * Las cuatro lecturas de /reloj. Traen TODAS las clases de tiempo y la pagina filtra la suya,
+ * igual que ya hacia /errores con `v_errors_by_phase`: asi la tabla de comparacion entre clases
+ * no cuesta una consulta extra.
+ *
+ * Reemplazan a las de `v_move_time_*` (0006), que no tenian dimension de clase y por lo tanto
+ * promediaban una partida de bala con una de 10 minutos. Las vistas viejas siguen existiendo en
+ * la base porque no se edita una migracion aplicada, pero ya no las lee nadie.
+ */
+
 /** Tiempo gastado por numero de jugada. Solo hasta el ply 60: mas alla la muestra es minuscula. */
-export async function moveTimeByPly(): Promise<MoveTimeByPly[]> {
+export async function tiempoPorJugada(): Promise<TiempoPorJugada[]> {
   const { data, error } = await supabaseAdmin()
-    .from('v_move_time_by_ply')
+    .from('v_tiempo_por_jugada')
     .select('*')
     .lte('ply', 60)
     .order('ply');
-  if (error) fail('v_move_time_by_ply', error.message);
+  if (error) fail('v_tiempo_por_jugada', error.message);
   return data ?? [];
 }
 
-export async function moveTimeByPhase(): Promise<MoveTimeByPhase[]> {
-  const { data, error } = await supabaseAdmin().from('v_move_time_by_phase').select('*').order('phase');
-  if (error) fail('v_move_time_by_phase', error.message);
+export async function tiempoPorFase(): Promise<TiempoPorFase[]> {
+  const { data, error } = await supabaseAdmin().from('v_tiempo_por_fase').select('*').order('phase');
+  if (error) fail('v_tiempo_por_fase', error.message);
   return data ?? [];
 }
 
-export async function moveTimeDistribution(): Promise<MoveTimeDistribution[]> {
-  const { data, error } = await supabaseAdmin().from('v_move_time_distribution').select('*');
-  if (error) fail('v_move_time_distribution', error.message);
+export async function distribucionDeTiempo(): Promise<DistribucionDeTiempo[]> {
+  const { data, error } = await supabaseAdmin().from('v_distribucion_de_tiempo').select('*');
+  if (error) fail('v_distribucion_de_tiempo', error.message);
   return data ?? [];
 }
 
-export async function timeoutMoment(): Promise<TimeoutMoment[]> {
-  const { data, error } = await supabaseAdmin().from('v_timeout_moment').select('*').order('phase');
-  if (error) fail('v_timeout_moment', error.message);
+export async function momentoDelTimeout(): Promise<MomentoDelTimeout[]> {
+  const { data, error } = await supabaseAdmin().from('v_momento_del_timeout').select('*').order('phase');
+  if (error) fail('v_momento_del_timeout', error.message);
   return data ?? [];
 }
 
@@ -227,16 +241,52 @@ export async function errorsByMoveTime(): Promise<ErrorsByMoveTime[]> {
  * afuera (ver la migracion 0007). Ahora se sirven igual y la UI avisa que hay mas de una jugada
  * buena, que es informacion util y no un motivo para esconder el ejercicio.
  */
-export async function nextDuePuzzle(): Promise<Puzzle | null> {
+export async function nextDuePuzzle(tema?: string | null): Promise<Puzzle | null> {
+  let query = supabaseAdmin()
+    .from('v_cola_de_ejercicios')
+    .select('*')
+    .lte('due_at', new Date().toISOString())
+    // La sesion dirigida: primero los errores de una derrota de rapida de los ultimos 7 dias,
+    // que es cuando la partida todavia se recuerda y el ejercicio ensena el doble. `prioridad`
+    // la calcula la vista; aca solo se respeta el orden.
+    .order('prioridad', { ascending: true })
+    .order('due_at', { ascending: true })
+    .limit(1);
+  if (tema) query = query.eq('theme', tema);
+  const { data, error } = await query.maybeSingle();
+  if (error) fail('v_cola_de_ejercicios', error.message);
+  return data as Puzzle | null;
+}
+
+/**
+ * El proximo ejercicio de UNA partida, para el boton "entrenar los N errores de esta partida".
+ *
+ * Ignora `due_at` por la misma razon que `puzzleAt`: si el alumno acaba de revisar esa derrota y
+ * pide entrenar sus errores, servirselos es el punto; que la repeticion espaciada no los tuviera
+ * programados es irrelevante. El orden por `due_at` hace que la tanda rote sola: al resolver uno,
+ * SM-2 empuja su fecha al futuro y el siguiente pasa a ser el primero.
+ */
+export async function nextPuzzleDeLaPartida(gameId: number): Promise<Puzzle | null> {
   const { data, error } = await supabaseAdmin()
     .from('puzzles')
     .select('*')
-    .lte('due_at', new Date().toISOString())
+    .eq('game_id', gameId)
     .order('due_at', { ascending: true })
     .limit(1)
     .maybeSingle();
   if (error) fail('puzzles', error.message);
   return data;
+}
+
+/** Cuantos ejercicios tiene una partida. Es el N del boton de /partida. */
+export async function ejerciciosDeLaPartida(gameId: number): Promise<number> {
+  const { data, error } = await supabaseAdmin()
+    .from('v_ejercicios_por_partida')
+    .select('n')
+    .eq('game_id', gameId)
+    .maybeSingle();
+  if (error) fail('v_ejercicios_por_partida', error.message);
+  return data?.n ?? 0;
 }
 
 /**
@@ -320,6 +370,12 @@ export type GameFilters = {
   /** Lista blanca fija: nunca se interpola un nombre de columna llegado del usuario. */
   sort?: 'end_time' | 'my_rating';
   dir?: 'asc' | 'desc';
+  /**
+   * Derrotas de rapida que todavia no se revisaron. Implica `time_class = 'rapid'` y
+   * `result = 'loss'`: revisar bala no esta en el plan, y "una victoria sin revisar" no es un
+   * concepto que exista.
+   */
+  sinRevisar?: boolean;
 };
 
 export type GameListRow = Pick<
@@ -357,6 +413,16 @@ export async function listGames(filters: GameFilters): Promise<{ rows: GameListR
   if (filters.timeClass) query = query.eq('time_class', filters.timeClass);
   if (filters.color) query = query.eq('my_color', filters.color);
   if (filters.result) query = query.eq('result', filters.result);
+
+  if (filters.sinRevisar) {
+    // Se excluyen las YA revisadas, no se incluyen las pendientes: `game_reviews` tiene una fila
+    // por revision hecha (decenas), mientras que las derrotas pendientes son cientos. Excluir la
+    // lista corta es lo que mantiene la consulta chica. Si algun dia hay miles de revisiones,
+    // esto pasa a ser un `not.in` largo y hay que moverlo a la vista.
+    const revisados = await idsRevisados();
+    query = query.eq('time_class', 'rapid').eq('result', 'loss');
+    if (revisados.size > 0) query = query.not('id', 'in', `(${[...revisados].join(',')})`);
+  }
 
   const { data, error, count } = await query;
   if (error) fail('games', error.message);
@@ -482,6 +548,51 @@ export async function ultimaDerrotaDeRapida(): Promise<Game | null> {
     .maybeSingle();
   if (error) fail('games', error.message);
   return data;
+}
+
+/**
+ * La cola de derrotas de rapida sin revisar, de la mas reciente hacia atras.
+ *
+ * `limite` es 3 en la portada y NO es un detalle de presentacion: mostrar las 40 pendientes es
+ * mostrar una deuda, y una deuda no se empieza. Es la misma leccion que los 397 ejercicios
+ * vencidos. `n_total` viene en cada fila (ventana sobre la misma consulta) para poder decir
+ * "y 37 mas" sin traerse las 37.
+ */
+export async function derrotasSinRevisar(limite = 3): Promise<DerrotaSinRevisar[]> {
+  const { data, error } = await supabaseAdmin()
+    .from('v_derrotas_sin_revisar')
+    .select('*')
+    .limit(limite);
+  if (error) fail('v_derrotas_sin_revisar', error.message);
+  return data ?? [];
+}
+
+/** La revision de una partida, si ya se hizo. */
+export async function revisionDePartida(gameId: number): Promise<GameReview | null> {
+  const { data, error } = await supabaseAdmin()
+    .from('game_reviews')
+    .select('*')
+    .eq('game_id', gameId)
+    .maybeSingle();
+  if (error) fail('game_reviews', error.message);
+  return data;
+}
+
+/**
+ * Los ids de las partidas ya revisadas. Lo usa el registro para dos cosas: filtrar por "sin
+ * revisar" y distinguir la fila de una derrota que sigue pendiente.
+ */
+export async function idsRevisados(): Promise<Set<number>> {
+  const { data, error } = await supabaseAdmin().from('game_reviews').select('game_id');
+  if (error) fail('game_reviews', error.message);
+  return new Set((data ?? []).map((r) => r.game_id));
+}
+
+/** Lo que el alumno dice que le pasa, agrupado, con cuanto se aleja del ply que senala el motor. */
+export async function motivosDeDerrota(): Promise<MotivoDeDerrota[]> {
+  const { data, error } = await supabaseAdmin().from('v_motivos_de_derrota').select('*');
+  if (error) fail('v_motivos_de_derrota', error.message);
+  return data ?? [];
 }
 
 /**
