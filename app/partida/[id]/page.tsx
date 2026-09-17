@@ -314,7 +314,12 @@ export default async function PartidaPage({
           plyInicial={Number.parseInt(ply ?? '0', 10) || 0}
           ciego={modoCiego ? { plyDelMotor } : undefined}
           resumen={
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            // El `key` no es decorativo y no viene de ningun `map`: `resumen` cruza la frontera
+            // servidor -> cliente, y GameReview lo renderiza dentro de un arreglo de hijos que,
+            // ya deserializado, React trata como lista dinamica. Sin clave, la mejor pantalla de
+            // la app abria con un error de consola. Es previo a esta fase y salio de las
+            // capturas, no de los tests: ningun test mira la consola del navegador.
+            <div key="resumen" className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <Mini
                 etiqueta="Tiempo por jugada"
                 valor={medianaMs === null ? '—' : `${(medianaMs / 1000).toFixed(1)} s`}
