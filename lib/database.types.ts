@@ -326,6 +326,7 @@ export type Database = {
           attempt_no: number
           hint_used: boolean
           concepto: string | null
+          concepto_elegido: string | null
         }
         Insert: {
           id?: number
@@ -337,6 +338,7 @@ export type Database = {
           attempt_no?: number
           hint_used?: boolean
           concepto?: string | null
+          concepto_elegido?: string | null
         }
         Update: {
           id?: number
@@ -348,6 +350,7 @@ export type Database = {
           attempt_no?: number
           hint_used?: boolean
           concepto?: string | null
+          concepto_elegido?: string | null
         }
         Relationships: [
           {
@@ -510,6 +513,36 @@ export type Database = {
         }
         Relationships: []
       }
+      v_cola_de_ejercicios: {
+        Row: {
+          id: number | null
+          game_id: number | null
+          ply: number | null
+          fen: string | null
+          played_uci: string | null
+          best_uci: string | null
+          cp_loss: number | null
+          win_pct_loss: number | null
+          is_unique: boolean | null
+          theme: string | null
+          due_at: string | null
+          interval_days: number | null
+          ease: number | null
+          lapses: number | null
+          my_color: Database["public"]["Enums"]["game_color"] | null
+          solution_line: string[] | null
+          refutation_line: string[] | null
+          eval_best_cp: number | null
+          eval_played_cp: number | null
+          second_best_uci: string | null
+          second_best_cp: number | null
+          prioridad: number | null
+          partida_terminada: string | null
+          partida_time_class: string | null
+          partida_rival: string | null
+        }
+        Relationships: []
+      }
       v_conceptos_fallados: {
         Row: {
           concepto: string | null
@@ -569,6 +602,14 @@ export type Database = {
           phase: number | null
           time_bucket: string | null
           n: number | null
+        }
+        Relationships: []
+      }
+      v_ejercicios_por_partida: {
+        Row: {
+          game_id: number | null
+          n: number | null
+          n_vencidos: number | null
         }
         Relationships: []
       }
@@ -772,6 +813,15 @@ export type Database = {
           month_local: string | null
           time_control: string | null
           n: number | null
+        }
+        Relationships: []
+      }
+      v_reconocimiento: {
+        Row: {
+          concepto: string | null
+          n: number | null
+          reconocidos: number | null
+          contestados: number | null
         }
         Relationships: []
       }

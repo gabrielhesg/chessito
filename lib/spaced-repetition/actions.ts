@@ -91,3 +91,41 @@ export async function recordAttempt(intento: Intento & { cierra: boolean }): Pro
     });
   }
 }
+
+/**
+ * Lo que el alumno DICE que le paso, anotado sobre el intento que se acaba de guardar.
+ *
+ * Va como una segunda escritura y no como un campo de `recordAttempt` a proposito: el intento
+ * tiene que quedar guardado en el momento del fallo, porque es lo que alimenta SM-2. Si se
+ * esperara la respuesta de la pregunta, cerrar la pestana sin contestar perderia el intento
+ * entero — y la repeticion espaciada dejaria de saber que ese ejercicio se fallo.
+ *
+ * Identifica la fila por `puzzle_id` y la mas reciente: hay un solo usuario y la pregunta se
+ * contesta a segundos del fallo.
+ */
+export async function anotarConceptoElegido(puzzleId: number, conceptoElegido: string): Promise<void> {
+  const cliente = supabaseAdmin();
+  const { data, error } = await cliente
+    .from('puzzle_attempts')
+    .select('id')
+    .eq('puzzle_id', puzzleId)
+    .order('attempted_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) {
+    log.error('no se pudo ubicar el intento para anotar el concepto elegido', {
+      puzzleId,
+      error: error?.message ?? 'sin filas',
+    });
+    return;
+  }
+  const { error: errorUpdate } = await cliente
+    .from('puzzle_attempts')
+    .update({ concepto_elegido: conceptoElegido })
+    .eq('id', data.id);
+  // Igual que `recordAttempt`: esto es diagnostico, no el estado del ejercicio. Si se pierde, el
+  // alumno no nota nada y SM-2 sigue correcto. Se loguea y no se lanza.
+  if (errorUpdate) {
+    log.error('no se pudo anotar el concepto elegido', { puzzleId, error: errorUpdate.message });
+  }
+}

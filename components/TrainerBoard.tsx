@@ -4,7 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
-import { recordAttempt } from "@/lib/spaced-repetition/actions";
+import {
+  anotarConceptoElegido,
+  recordAttempt,
+} from "@/lib/spaced-repetition/actions";
+import { PreguntaQuePaso } from "@/components/PreguntaQuePaso";
 import {
   conceptoDelError,
   describirLinea,
@@ -12,6 +16,7 @@ import {
   explicarBlunder,
   logroDeLaSolucion,
   TEXTO_CONCEPTO,
+  type Concepto,
   type Explicacion,
   type Linea,
   type PasoLinea,
@@ -62,7 +67,11 @@ const NOMBRE_THEME: Record<string, string> = {
  * pista (`lib/spaced-repetition/actions.ts`), asi que insistir no adelanta la proxima aparicion.
  */
 
-type Estado = "jugando" | "resuelto" | "fallado";
+/**
+ * `preguntando` se intercala entre fallar y ver la respuesta: es donde va la pregunta de un
+ * tap. Despues de revelar, preguntar no mediria nada porque la respuesta ya es obvia.
+ */
+type Estado = "jugando" | "preguntando" | "resuelto" | "fallado";
 
 /**
  * Pinta la linea como la leeria un ajedrecista: `12.Nf3 Nc6 13.Bb5`. Una linea que arranca con
@@ -418,6 +427,8 @@ export function TrainerBoard({
   const [position, setPosition] = useState(puzzle.fen);
   const [paso, setPaso] = useState(0);
   const [estado, setEstado] = useState<Estado>("jugando");
+  /** Lo que la app derivo del error, guardado para poder ofrecerlo entre las opciones. */
+  const [conceptoCalculado, setConceptoCalculado] = useState<string | null>(null);
   const [intentos, setIntentos] = useState(0);
   const [pistaUsada, setPistaUsada] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -685,7 +696,11 @@ export function TrainerBoard({
 
   const cerrar = useCallback(
     (resuelto: boolean, playedUci: string, numeroIntento: number) => {
-      setEstado(resuelto ? "resuelto" : "fallado");
+      const concepto = resuelto
+        ? null
+        : conceptoDeJugada(playedUci || puzzle.playedUci);
+      // El intento se guarda AHORA, no cuando se conteste la pregunta: es lo que alimenta SM-2,
+      // y cerrar la pestana sin contestar no puede perderlo.
       intentoRef.current = recordAttempt({
         puzzleId: puzzle.id,
         playedUci,
@@ -693,20 +708,34 @@ export function TrainerBoard({
         msTaken: Math.round(performance.now() - iniciadoRef.current),
         attemptNo: numeroIntento,
         hintUsed: pistaUsada,
-        concepto: resuelto
-          ? null
-          : conceptoDeJugada(playedUci || puzzle.playedUci),
+        concepto,
         cierra: true,
       });
-      if (!resuelto) mostrarRefutacion();
+      if (resuelto) {
+        setEstado("resuelto");
+        return;
+      }
+      // Al fallar, primero la pregunta. `mostrarRefutacion` se llama al contestarla, porque
+      // revelar la linea es exactamente lo que haria la pregunta inutil.
+      setConceptoCalculado(concepto);
+      setEstado("preguntando");
     },
     [
       puzzle.id,
       puzzle.playedUci,
       pistaUsada,
-      mostrarRefutacion,
       conceptoDeJugada,
     ],
+  );
+
+  /** Contestar (o saltarse) la pregunta es lo que revela la respuesta. */
+  const responderQuePaso = useCallback(
+    (elegido: Concepto | null) => {
+      if (elegido !== null) void anotarConceptoElegido(puzzle.id, elegido);
+      setEstado("fallado");
+      mostrarRefutacion();
+    },
+    [puzzle.id, mostrarRefutacion],
   );
 
   /** Entrar a probar las lineas: el tablero vuelve a la posicion del ejercicio y se suelta. */
@@ -1023,6 +1052,13 @@ export function TrainerBoard({
               </Button>
             </div>
           </div>
+        ) : estado === "preguntando" ? (
+          <PreguntaQuePaso
+            puzzleId={puzzle.id}
+            conceptoCalculado={conceptoCalculado}
+            onResponder={(elegido) => responderQuePaso(elegido)}
+            onSaltar={() => responderQuePaso(null)}
+          />
         ) : (
           <>
             {exploracion ? (

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { gameDetail, openingNames, revisionDePartida } from '@/lib/data';
+import { ejerciciosDeLaPartida, gameDetail, openingNames, revisionDePartida } from '@/lib/data';
 import { despojarDelMotor, esModoCiego } from '@/lib/reviews/ciego';
 import { accuracyDePartida } from '@/lib/analysis/accuracy';
 import { formatTimeControl } from '@/lib/chess/timecontrol';
@@ -161,6 +161,10 @@ export default async function PartidaPage({
   // El ply que el motor senala como el error que definio la partida. Viaja al cliente para
   // quedar congelado en `game_reviews.ply_del_motor` al confirmar.
   const plyDelMotor = peorJugada?.ply ?? null;
+
+  // Cuantos ejercicios salieron de esta partida. Solo se ofrece entrenarlos DESPUES del ritual:
+  // en modo ciego el numero de errores ya seria una pista sobre cuantas veces te equivocaste.
+  const nEjercicios = modoCiego ? 0 : await ejerciciosDeLaPartida(numeroId).catch(() => 0);
   const resultado = game.result === 'win' ? 'Victoria' : game.result === 'loss' ? 'Derrota' : 'Tablas';
 
   const medianaMs = mediana(mias.filter((m) => m.move_time_ms !== null).map((m) => m.move_time_ms ?? 0));
@@ -403,6 +407,26 @@ export default async function PartidaPage({
                 simple, excluyendo libro y posiciones ya decididas. Correlaciona con la precisión de
                 chess.com pero no coincide: ellos usan CAPS, que es otra fórmula cerrada.
               </Ayuda>
+            </div>
+          </Panel>
+        ) : null}
+
+        {nEjercicios > 0 ? (
+          <Panel
+            title="Entrenar esta partida"
+            subtitle="Las posiciones donde te equivocaste, servidas como ejercicios"
+          >
+            <div className="flex flex-wrap items-center gap-3">
+              <Link
+                href={`/entrenador?partida=${game.id}`}
+                className="rounded-lg bg-acento px-3.5 py-2 text-[12.5px] font-semibold text-fondo"
+              >
+                Entrenar {nEjercicios} {nEjercicios === 1 ? 'error' : 'errores'} de esta partida
+              </Link>
+              <span className="text-[12.5px] text-tenue">
+                Se sirven en tanda, aunque la repetición espaciada no los tuviera programados: si
+                acabas de revisar la partida, todavía la recuerdas.
+              </span>
             </div>
           </Panel>
         ) : null}

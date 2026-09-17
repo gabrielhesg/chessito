@@ -1,4 +1,12 @@
-import { conceptosFallados, dueCount, nextDuePuzzle, puzzleAt, sessionToday } from '@/lib/data';
+import {
+  conceptosFallados,
+  dueCount,
+  nextDuePuzzle,
+  nextPuzzleDeLaPartida,
+  puzzleAt,
+  sessionToday,
+} from '@/lib/data';
+import Link from 'next/link';
 import { TEXTO_CONCEPTO, type Concepto } from '@/lib/puzzles/explain';
 import { Ayuda, EmptyState, Pagina } from '@/components/ui';
 import { TrainerBoard } from '@/components/TrainerBoard';
@@ -56,19 +64,25 @@ async function adorno<T>(lectura: Promise<T>, siFalla: T): Promise<T> {
 export default async function EntrenadorPage({
   searchParams,
 }: {
-  searchParams: Promise<{ partida?: string; ply?: string }>;
+  searchParams: Promise<{ partida?: string; ply?: string; tema?: string }>;
 }) {
-  // `/partida/[id]` enlaza a una posicion concreta; sin esos parametros se sirve la cola normal.
-  const { partida, ply } = await searchParams;
-  const pedido =
-    partida && ply ? { gameId: Number.parseInt(partida, 10), ply: Number.parseInt(ply, 10) } : null;
+  // Tres formas de llegar, en orden de lo mas especifico a lo mas general:
+  //   ?partida=&ply=  una posicion concreta (el link de /partida desde la Fase 6)
+  //   ?partida=       la tanda de esa partida: "entrenar los N errores de esta derrota"
+  //   ?tema=          la sesion dedicada a un patron
+  //   sin nada        la cola dirigida: primero las derrotas de rapida de los ultimos 7 dias
+  const { partida, ply, tema } = await searchParams;
+  const gameId = partida ? Number.parseInt(partida, 10) : NaN;
+  const plyPedido = ply ? Number.parseInt(ply, 10) : NaN;
 
   const [puzzle, pendientes, porTema, sesion] = await Promise.all([
     // Esta sí se deja fallar: sin ejercicio no hay pagina que mostrar, y un 500 con el error real
     // en los logs es mas util que una pantalla que miente diciendo "no hay ejercicios".
-    pedido && Number.isFinite(pedido.gameId) && Number.isFinite(pedido.ply)
-      ? puzzleAt(pedido.gameId, pedido.ply).then((p) => p ?? nextDuePuzzle())
-      : nextDuePuzzle(),
+    Number.isFinite(gameId) && Number.isFinite(plyPedido)
+      ? puzzleAt(gameId, plyPedido).then((p) => p ?? nextDuePuzzle())
+      : Number.isFinite(gameId)
+        ? nextPuzzleDeLaPartida(gameId).then((p) => p ?? nextDuePuzzle())
+        : nextDuePuzzle(tema ?? null),
     adorno(dueCount(), 0),
     adorno(conceptosFallados(), []),
     adorno(sessionToday(), []),
@@ -94,6 +108,11 @@ export default async function EntrenadorPage({
   }));
 
   const total = Math.max(sesion.length, Math.min(PUNTOS_SESION, sesion.length + pendientes));
+
+  // Los chips salen de los patrones que YA tienen muestra suficiente: ofrecer "mate del pasillo"
+  // cuando hay dos ejercicios de eso es ofrecer una sesion de dos.
+  const chips = conMuestra.slice(0, 5);
+  const enTanda = Number.isFinite(gameId) && !Number.isFinite(plyPedido);
 
   return (
     <Pagina
@@ -152,6 +171,51 @@ export default async function EntrenadorPage({
         ) : null
       }
     >
+      {(chips.length > 0 || enTanda) && puzzle ? (
+        <div className="mb-5 flex flex-wrap items-center gap-2">
+          {enTanda ? (
+            <>
+              <span className="text-xs text-tenue">Errores de una sola partida</span>
+              <Link
+                href="/entrenador"
+                className="rounded-lg border border-acento bg-acento/10 px-2.5 py-1 text-xs font-medium text-acento"
+              >
+                Volver a la cola ✕
+              </Link>
+            </>
+          ) : (
+            <>
+              <span className="text-xs text-tenue">Sesión de</span>
+              <Link
+                href="/entrenador"
+                aria-current={tema ? undefined : 'true'}
+                className={`rounded-lg border px-2.5 py-1 text-xs transition-colors ${
+                  tema
+                    ? 'border-borde text-tenue hover:border-borde-fuerte hover:text-texto'
+                    : 'border-acento bg-acento/10 font-medium text-acento'
+                }`}
+              >
+                todo
+              </Link>
+              {chips.map((c) => (
+                <Link
+                  key={c.concepto}
+                  href={`/entrenador?tema=${encodeURIComponent(c.concepto)}`}
+                  aria-current={tema === c.concepto ? 'true' : undefined}
+                  className={`rounded-lg border px-2.5 py-1 text-xs transition-colors ${
+                    tema === c.concepto
+                      ? 'border-acento bg-acento/10 font-medium text-acento'
+                      : 'border-borde text-tenue hover:border-borde-fuerte hover:text-texto'
+                  }`}
+                >
+                  {NOMBRE_CONCEPTO[c.concepto] ?? c.concepto}
+                </Link>
+              ))}
+            </>
+          )}
+        </div>
+      ) : null}
+
       {puzzle ? (
         <TrainerBoard
           key={puzzle.id}

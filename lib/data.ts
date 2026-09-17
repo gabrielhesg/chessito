@@ -241,16 +241,52 @@ export async function errorsByMoveTime(): Promise<ErrorsByMoveTime[]> {
  * afuera (ver la migracion 0007). Ahora se sirven igual y la UI avisa que hay mas de una jugada
  * buena, que es informacion util y no un motivo para esconder el ejercicio.
  */
-export async function nextDuePuzzle(): Promise<Puzzle | null> {
+export async function nextDuePuzzle(tema?: string | null): Promise<Puzzle | null> {
+  let query = supabaseAdmin()
+    .from('v_cola_de_ejercicios')
+    .select('*')
+    .lte('due_at', new Date().toISOString())
+    // La sesion dirigida: primero los errores de una derrota de rapida de los ultimos 7 dias,
+    // que es cuando la partida todavia se recuerda y el ejercicio ensena el doble. `prioridad`
+    // la calcula la vista; aca solo se respeta el orden.
+    .order('prioridad', { ascending: true })
+    .order('due_at', { ascending: true })
+    .limit(1);
+  if (tema) query = query.eq('theme', tema);
+  const { data, error } = await query.maybeSingle();
+  if (error) fail('v_cola_de_ejercicios', error.message);
+  return data as Puzzle | null;
+}
+
+/**
+ * El proximo ejercicio de UNA partida, para el boton "entrenar los N errores de esta partida".
+ *
+ * Ignora `due_at` por la misma razon que `puzzleAt`: si el alumno acaba de revisar esa derrota y
+ * pide entrenar sus errores, servirselos es el punto; que la repeticion espaciada no los tuviera
+ * programados es irrelevante. El orden por `due_at` hace que la tanda rote sola: al resolver uno,
+ * SM-2 empuja su fecha al futuro y el siguiente pasa a ser el primero.
+ */
+export async function nextPuzzleDeLaPartida(gameId: number): Promise<Puzzle | null> {
   const { data, error } = await supabaseAdmin()
     .from('puzzles')
     .select('*')
-    .lte('due_at', new Date().toISOString())
+    .eq('game_id', gameId)
     .order('due_at', { ascending: true })
     .limit(1)
     .maybeSingle();
   if (error) fail('puzzles', error.message);
   return data;
+}
+
+/** Cuantos ejercicios tiene una partida. Es el N del boton de /partida. */
+export async function ejerciciosDeLaPartida(gameId: number): Promise<number> {
+  const { data, error } = await supabaseAdmin()
+    .from('v_ejercicios_por_partida')
+    .select('n')
+    .eq('game_id', gameId)
+    .maybeSingle();
+  if (error) fail('v_ejercicios_por_partida', error.message);
+  return data?.n ?? 0;
 }
 
 /**
