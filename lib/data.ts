@@ -29,6 +29,10 @@ export type ErrorsByMoveTime = Views['v_errors_by_move_time']['Row'];
 export type JobRun = Database['public']['Tables']['job_runs']['Row'];
 export type Game = Database['public']['Tables']['games']['Row'];
 export type Puzzle = Database['public']['Tables']['puzzles']['Row'];
+export type DerrotaSinRevisar = Views['v_derrotas_sin_revisar']['Row'];
+export type MotivoDeDerrota = Views['v_motivos_de_derrota']['Row'];
+export type GameReview = Database['public']['Tables']['game_reviews']['Row'];
+export type ReviewMotivo = Database['public']['Enums']['review_motivo'];
 
 function fail(view: string, message: string): never {
   throw new Error(`No se pudo leer ${view}: ${message}`);
@@ -330,6 +334,12 @@ export type GameFilters = {
   /** Lista blanca fija: nunca se interpola un nombre de columna llegado del usuario. */
   sort?: 'end_time' | 'my_rating';
   dir?: 'asc' | 'desc';
+  /**
+   * Derrotas de rapida que todavia no se revisaron. Implica `time_class = 'rapid'` y
+   * `result = 'loss'`: revisar bala no esta en el plan, y "una victoria sin revisar" no es un
+   * concepto que exista.
+   */
+  sinRevisar?: boolean;
 };
 
 export type GameListRow = Pick<
@@ -367,6 +377,16 @@ export async function listGames(filters: GameFilters): Promise<{ rows: GameListR
   if (filters.timeClass) query = query.eq('time_class', filters.timeClass);
   if (filters.color) query = query.eq('my_color', filters.color);
   if (filters.result) query = query.eq('result', filters.result);
+
+  if (filters.sinRevisar) {
+    // Se excluyen las YA revisadas, no se incluyen las pendientes: `game_reviews` tiene una fila
+    // por revision hecha (decenas), mientras que las derrotas pendientes son cientos. Excluir la
+    // lista corta es lo que mantiene la consulta chica. Si algun dia hay miles de revisiones,
+    // esto pasa a ser un `not.in` largo y hay que moverlo a la vista.
+    const revisados = await idsRevisados();
+    query = query.eq('time_class', 'rapid').eq('result', 'loss');
+    if (revisados.size > 0) query = query.not('id', 'in', `(${[...revisados].join(',')})`);
+  }
 
   const { data, error, count } = await query;
   if (error) fail('games', error.message);
@@ -492,6 +512,51 @@ export async function ultimaDerrotaDeRapida(): Promise<Game | null> {
     .maybeSingle();
   if (error) fail('games', error.message);
   return data;
+}
+
+/**
+ * La cola de derrotas de rapida sin revisar, de la mas reciente hacia atras.
+ *
+ * `limite` es 3 en la portada y NO es un detalle de presentacion: mostrar las 40 pendientes es
+ * mostrar una deuda, y una deuda no se empieza. Es la misma leccion que los 397 ejercicios
+ * vencidos. `n_total` viene en cada fila (ventana sobre la misma consulta) para poder decir
+ * "y 37 mas" sin traerse las 37.
+ */
+export async function derrotasSinRevisar(limite = 3): Promise<DerrotaSinRevisar[]> {
+  const { data, error } = await supabaseAdmin()
+    .from('v_derrotas_sin_revisar')
+    .select('*')
+    .limit(limite);
+  if (error) fail('v_derrotas_sin_revisar', error.message);
+  return data ?? [];
+}
+
+/** La revision de una partida, si ya se hizo. */
+export async function revisionDePartida(gameId: number): Promise<GameReview | null> {
+  const { data, error } = await supabaseAdmin()
+    .from('game_reviews')
+    .select('*')
+    .eq('game_id', gameId)
+    .maybeSingle();
+  if (error) fail('game_reviews', error.message);
+  return data;
+}
+
+/**
+ * Los ids de las partidas ya revisadas. Lo usa el registro para dos cosas: filtrar por "sin
+ * revisar" y distinguir la fila de una derrota que sigue pendiente.
+ */
+export async function idsRevisados(): Promise<Set<number>> {
+  const { data, error } = await supabaseAdmin().from('game_reviews').select('game_id');
+  if (error) fail('game_reviews', error.message);
+  return new Set((data ?? []).map((r) => r.game_id));
+}
+
+/** Lo que el alumno dice que le pasa, agrupado, con cuanto se aleja del ply que senala el motor. */
+export async function motivosDeDerrota(): Promise<MotivoDeDerrota[]> {
+  const { data, error } = await supabaseAdmin().from('v_motivos_de_derrota').select('*');
+  if (error) fail('v_motivos_de_derrota', error.message);
+  return data ?? [];
 }
 
 /**

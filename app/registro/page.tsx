@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { listGames, openingNames } from '@/lib/data';
+import { idsRevisados, listGames, openingNames } from '@/lib/data';
 import { formatTimeControl } from '@/lib/chess/timecontrol';
 import { Badge, EmptyState, Fila, Pagina, Panel, SortableTh, Tabla, Td } from '@/components/ui';
 
@@ -40,7 +40,14 @@ function esSortColumna(value: string | undefined): value is SortColumna {
 export default async function RegistroPage({
   searchParams,
 }: {
-  searchParams: Promise<{ clase?: string; color?: string; resultado?: string; sort?: string; dir?: string }>;
+  searchParams: Promise<{
+    clase?: string;
+    color?: string;
+    resultado?: string;
+    sort?: string;
+    dir?: string;
+    revision?: string;
+  }>;
 }) {
   const params = await searchParams;
   const timeClass = CLASES.find((c) => c === params.clase);
@@ -49,19 +56,46 @@ export default async function RegistroPage({
   const sort: SortColumna = esSortColumna(params.sort) ? params.sort : 'end_time';
   const dir: 'asc' | 'desc' = params.dir === 'asc' ? 'asc' : 'desc';
 
-  const { rows, total } = await listGames({ timeClass, color, result, sort, dir, limit: 100 });
-  const nombres = await openingNames(rows.map((r) => r.opening_id).filter((id): id is string => id !== null));
+  // El filtro de revision implica rapida + derrota, asi que pisa a los otros dos en vez de
+  // combinarse con ellos: "victorias de bala sin revisar" no es un corte que signifique nada.
+  const sinRevisar = params.revision === 'pendiente';
+
+  const { rows, total } = await listGames({
+    timeClass: sinRevisar ? undefined : timeClass,
+    color,
+    result: sinRevisar ? undefined : result,
+    sort,
+    dir,
+    limit: 100,
+    sinRevisar,
+  });
+  const [nombres, revisados] = await Promise.all([
+    openingNames(rows.map((r) => r.opening_id).filter((id): id is string => id !== null)),
+    idsRevisados(),
+  ]);
+
+  /** Una derrota de rapida que sigue pendiente del ritual. Solo esas se distinguen. */
+  const pendienteDeRevision = (g: { id: number; time_class: string; result: string }): boolean =>
+    g.time_class === 'rapid' && g.result === 'loss' && !revisados.has(g.id);
 
   const link = (patch: Record<string, string | undefined>): string => {
     const next = new URLSearchParams();
-    const merged = { clase: timeClass, color, resultado: result, sort, dir, ...patch };
+    const merged = {
+      clase: timeClass,
+      color,
+      resultado: result,
+      sort,
+      dir,
+      revision: sinRevisar ? 'pendiente' : undefined,
+      ...patch,
+    };
     for (const [key, value] of Object.entries(merged)) if (value) next.set(key, value);
     const query = next.toString();
     return query ? `/registro?${query}` : '/registro';
   };
   const sortLink = (nextSort: string, nextDir: 'asc' | 'desc'): string => link({ sort: nextSort, dir: nextDir });
 
-  const hayFiltro = Boolean(timeClass || color || result);
+  const hayFiltro = Boolean(timeClass || color || result || sinRevisar);
 
   return (
     <Pagina
@@ -101,7 +135,21 @@ export default async function RegistroPage({
               {RESULTADOS[r]}
             </Filtro>
           ))}
+          <span aria-hidden className="mx-1 h-4 w-px bg-borde" />
+          <Filtro
+            href={link({ revision: sinRevisar ? undefined : 'pendiente', clase: undefined, resultado: undefined })}
+            activo={sinRevisar}
+          >
+            sin revisar
+          </Filtro>
         </div>
+
+        {sinRevisar ? (
+          <p className="text-xs text-tenue">
+            Derrotas de rápida que todavía no analizaste. El filtro ignora la clase y el resultado:
+            revisar bala no está en el plan.
+          </p>
+        ) : null}
 
         <Panel>
           {rows.length === 0 ? (
@@ -171,7 +219,12 @@ export default async function RegistroPage({
                     </Badge>
                     <span className="ml-1.5 text-2xs text-apagado">{g.termination}</span>
                   </Td>
-                  <Td className="whitespace-nowrap">{g.opp_username}</Td>
+                  <Td className="whitespace-nowrap">
+                    {g.opp_username}
+                    {pendienteDeRevision(g) ? (
+                      <span className="ml-2 align-middle text-2xs text-acento">sin revisar</span>
+                    ) : null}
+                  </Td>
                   <Td num className="whitespace-nowrap">
                     {g.my_rating} <span className="text-apagado">vs</span> {g.opp_rating}
                   </Td>

@@ -9,6 +9,41 @@ export type Database = {
   }
   public: {
     Tables: {
+      game_reviews: {
+        Row: {
+          game_id: number
+          ply_marcado: number | null
+          motivo: Database["public"]["Enums"]["review_motivo"] | null
+          nota: string | null
+          ply_del_motor: number | null
+          creado_en: string
+        }
+        Insert: {
+          game_id: number
+          ply_marcado?: number | null
+          motivo?: Database["public"]["Enums"]["review_motivo"] | null
+          nota?: string | null
+          ply_del_motor?: number | null
+          creado_en?: string
+        }
+        Update: {
+          game_id?: number
+          ply_marcado?: number | null
+          motivo?: Database["public"]["Enums"]["review_motivo"] | null
+          nota?: string | null
+          ply_del_motor?: number | null
+          creado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_reviews_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: true
+            referencedRelation: "games"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       games: {
         Row: {
           id: number
@@ -514,6 +549,20 @@ export type Database = {
         }
         Relationships: []
       }
+      v_derrotas_sin_revisar: {
+        Row: {
+          id: number | null
+          end_time: string | null
+          opp_username: string | null
+          opp_rating: number | null
+          my_color: Database["public"]["Enums"]["game_color"] | null
+          time_control: string | null
+          termination: string | null
+          analysis_state: Database["public"]["Enums"]["analysis_state"] | null
+          n_total: number | null
+        }
+        Relationships: []
+      }
       v_distribucion_de_tiempo: {
         Row: {
           time_class: string | null
@@ -658,6 +707,15 @@ export type Database = {
         }
         Relationships: []
       }
+      v_motivos_de_derrota: {
+        Row: {
+          motivo: Database["public"]["Enums"]["review_motivo"] | null
+          n: number | null
+          coincide_con_el_motor: number | null
+          plies_de_diferencia: number | null
+        }
+        Relationships: []
+      }
       v_move_time_by_phase: {
         Row: {
           phase: number | null
@@ -767,6 +825,7 @@ export type Database = {
       game_result: "win" | "loss" | "draw"
       job_kind: "ingest" | "extract_moves" | "analyze" | "puzzles" | "backup"
       job_status: "running" | "success" | "failed"
+      review_motivo: "colgue_material" | "no_supe_que_hacer" | "me_quede_sin_tiempo" | "me_superaron_en_la_apertura" | "otro"
     }
     CompositeTypes: Record<PropertyKey, never>
   }
