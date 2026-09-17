@@ -50,11 +50,22 @@ comment on column game_reviews.ply_del_motor is
 alter table game_reviews enable row level security;
 
 -- ============================================================
--- La cola: derrotas de rapida sin revisar
+-- La cola: derrotas de rapida RECIENTES sin revisar
 -- ============================================================
--- Solo rapida: revisar bala no esta en el plan, y una cola con las 1.850 de bala adentro es una
--- cola que no se mira. El orden es de la mas reciente hacia atras porque una derrota de ayer se
--- recuerda y una de hace ocho meses no.
+-- Tres cortes, y ninguno es cosmetico:
+--
+-- 1. Solo rapida. Revisar bala no esta en el plan, y una cola con las 1.850 de bala adentro es
+--    una cola que no se mira.
+-- 2. Solo los ultimos 30 dias. El historico tiene 1.191 derrotas de rapida; sin ventana, la
+--    portada diria "y 1.188 mas sin revisar", que es exactamente la deuda completa que la regla
+--    del proyecto manda NO mostrar (la misma leccion que los 397 ejercicios vencidos). Medido en
+--    produccion: 1 derrota en los ultimos 7 dias, 6 en 30 y 16 en 90. Treinta dias deja una cola
+--    de seis, que si se puede terminar; noventa deja dieciseis, que ya se lee como deuda.
+--    Y una derrota de hace ocho meses no se revisa: no se recuerda la partida.
+-- 3. De la mas reciente hacia atras, por la misma razon.
+--
+-- La lista COMPLETA de pendientes sigue existiendo, en el filtro "sin revisar" de /registro, que
+-- no usa esta vista: ahi se llega buscando, que es otra cosa que abrir la portada.
 create or replace view v_derrotas_sin_revisar as
 select
   g.id,
@@ -70,15 +81,17 @@ from games g
 where g.rules = 'chess'
   and g.time_class = 'rapid'
   and g.result = 'loss'
+  and g.end_time > now() - interval '30 days'
   and not exists (select 1 from game_reviews r where r.game_id = g.id)
 order by g.end_time desc;
 
 alter view v_derrotas_sin_revisar set (security_invoker = on);
 
 comment on view v_derrotas_sin_revisar is
-  'Derrotas de rapida que todavia no se revisaron, de la mas reciente hacia atras. `n_total` '
-  'viene como ventana sobre la misma consulta para que la portada pueda decir "y 37 mas" sin '
-  'una segunda lectura, y sin traerse las 37.';
+  'Derrotas de rapida de los ultimos 30 dias que todavia no se revisaron, de la mas reciente '
+  'hacia atras. `n_total` viene como ventana sobre la misma consulta para que la portada pueda '
+  'decir "y 5 mas" sin una segunda lectura. La ventana no es un detalle de presentacion: sin '
+  'ella la cola son 1.191 partidas y la portada pasa a mostrar una deuda.';
 
 -- Lo que el alumno dice que le pasa, agrupado. Es la mitad barata del diagnostico: no necesita
 -- motor, solo que el ritual ocurra. Expone su `n` como toda vista agregada del proyecto.

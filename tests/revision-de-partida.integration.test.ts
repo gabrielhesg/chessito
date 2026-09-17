@@ -23,7 +23,9 @@ suite('revision de partida · migracion 0013', () => {
       id,
       chesscom_uuid: `uuid-${id}`,
       url: `https://example.test/${id}`,
-      end_time: new Date(Date.UTC(2026, 0, id, 12, 0, 0)).toISOString(),
+      // Relativas a ahora, porque la vista tiene ventana de 30 dias: `id` dias atras, asi que
+      // id mayor = mas antigua.
+      end_time: new Date(Date.now() - id * 24 * 60 * 60 * 1000).toISOString(),
       time_class: 'rapid',
       time_control: '600',
       base_seconds: 600,
@@ -100,13 +102,22 @@ suite('revision de partida · migracion 0013', () => {
 
     const filas = await cola();
     // Orden: la derrota de ayer se recuerda, la de hace ocho meses no.
-    expect(filas.map((r) => r.id)).toEqual([3, 2, 1]);
+    expect(filas.map((r) => r.id)).toEqual([1, 2, 3]);
     // n_total es una ventana sobre la misma consulta: la portada puede decir "y 2 mas" pidiendo
     // solo la primera fila, sin una segunda lectura.
     const res = await client.query<{ id: number; n_total: string }>(
       'select id::int as id, n_total::text from v_derrotas_sin_revisar limit 1',
     );
-    expect(res.rows[0]).toEqual({ id: 3, n_total: '3' });
+    expect(res.rows[0]).toEqual({ id: 1, n_total: '3' });
+  });
+
+  it('una derrota vieja no entra a la cola, aunque nunca se haya revisado', async () => {
+    await partida(1);
+    // Hace ocho meses. No se revisa porque no se recuerda la partida, y sumarla solo convierte
+    // la portada en una deuda de 1.191 partidas.
+    await partida(2, { end_time: new Date(Date.now() - 240 * 24 * 60 * 60 * 1000).toISOString() });
+
+    expect((await cola()).map((r) => r.id)).toEqual([1]);
   });
 
   it('saltarse el ritual tambien cuenta como revisada', async () => {

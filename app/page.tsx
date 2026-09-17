@@ -152,8 +152,9 @@ export default async function Portada() {
   // ellas el bloque se degrada, y una portada caida por un dato de apoyo es peor que una
   // portada incompleta (misma leccion que /entrenador en la Fase 7).
   const [colaDeDerrotas, jugadasHoy, formatos, msPorEjercicio] = await Promise.all([
-    // Tres, no la cola completa: mostrar las 40 pendientes es mostrar una deuda, y una deuda no
-    // se empieza. Misma leccion que los 397 ejercicios vencidos.
+    // Tres, no la cola completa: mostrar la deuda es la forma mas rapida de que no se empiece.
+    // La vista ya acota a los ultimos 30 dias por la misma razon — sin esa ventana serian 1.191
+    // derrotas y este bloque diria "y 1.188 mas".
     derrotasSinRevisar(3).catch(() => []),
     rapidasDeHoy().catch(() => 0),
     formatosDeRapida(mesActual).catch(() => []),
