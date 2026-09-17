@@ -26,6 +26,7 @@ import { formatTimeControl } from '@/lib/chess/timecontrol';
 import { Button, Pagina, Progreso } from '@/components/ui';
 import { MonthCalendar } from '@/components/charts/MonthCalendar';
 import { Sparkline } from '@/components/charts/Sparkline';
+import { BalaVsRating, type MesBalaRating } from '@/components/charts/BalaVsRating';
 
 export const dynamic = 'force-dynamic';
 
@@ -207,6 +208,19 @@ export default async function Portada() {
   // La serie solo dibuja los meses que pasan el umbral. Un mes con 4 partidas analizadas movería
   // la curva tanto como uno con 400, y la curva se lee como tendencia.
   const serieConMuestra = serieEstrella.filter((m) => (m.n ?? 0) >= N_MINIMO);
+
+  // La serie que la revision cruzada llamo "la conversacion con el alumno": cuanta bala jugo
+  // cada mes contra donde quedo su rating de rapida. Su maximo (1.464) es del mes de 408
+  // partidas de rapida; hoy es 1.268 con cientos de bala al mes. Los dos hechos, el mismo eje.
+  const mesesDelGrafico = [...new Set(meses.map((m) => m.month_local).filter((m): m is string => m !== null))]
+    .sort()
+    .slice(-18);
+  const balaVsRating: MesBalaRating[] = mesesDelGrafico.map((mes) => ({
+    mes,
+    bala: meses.find((m) => m.month_local === mes && m.time_class === 'bullet')?.n ?? 0,
+    rating: meses.find((m) => m.month_local === mes && m.time_class === CLASE)?.rating_at_month_end ?? null,
+  }));
+  const mesesConRating = balaVsRating.filter((m) => m.rating !== null).length;
 
   const calendario = (porDia ?? [])
     .filter((d) => d.day_local !== null)
@@ -535,6 +549,21 @@ export default async function Portada() {
                 ) : null}
               </ul>
             </div>
+
+            {mesesConRating >= 3 ? (
+              <div className="rounded-[14px] border border-borde bg-panel px-4.5 py-4">
+                <p className="eyebrow">Bala contra tu rating de rápida</p>
+                <div className="mt-3">
+                  <BalaVsRating meses={balaVsRating} />
+                </div>
+                <p className="mt-3 text-[12.5px] leading-relaxed text-tenue">
+                  Los dos hechos sobre el mismo tiempo, para que los mires juntos. Es{' '}
+                  <strong>correlación, no causa</strong>: no hay forma de demostrar desde estos
+                  datos que la bala te bajó el rating, y podría ser al revés — que dejaras la
+                  rápida porque te estaba yendo mal.
+                </p>
+              </div>
+            ) : null}
           </section>
 
         </div>

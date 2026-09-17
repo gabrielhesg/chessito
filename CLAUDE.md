@@ -1117,3 +1117,35 @@ con un error de consola de React desde antes de esta revision: el bloque `resume
 `GameReview` lo renderiza dentro de un arreglo de hijos que, ya deserializado, React trata como
 lista dinamica. La clave va en el elemento que se pasa, no en sus hijos. Ningun test lo detecto
 porque ningun test mira la consola del navegador: eso lo encuentran las capturas.
+
+## Estado al terminar la Fase 3 de la revision integral
+
+Las dos debilidades que el alumno declaro ya se miden. Una migracion nueva (`0015`), ninguna
+pagina nueva: todo sale de `moves`, que ya tenia la evaluacion y la clasificacion de LOS DOS
+bandos desde la Fase 3 del proyecto. No hizo falta motor: lo que faltaba era mirar.
+
+| Pieza | Donde |
+|---|---|
+| North Star, serie mensual, conversion y regalos | `supabase/migrations/0015_debilidades_medidas.sql` |
+| Bala contra rating de rapida | `components/charts/BalaVsRating.tsx` |
+
+**El signo, por tercera vez.** `moves.eval_cp` esta en perspectiva de blancas, asi que toda
+pregunta de la forma "¿estaba yo mejor?" exige girarlo por `my_color`. Sin eso,
+`v_ventaja_por_partida` mediria la ventaja del RIVAL en cada partida con negras — la mitad del
+historico, en silencio. Hay un test con negras que lo fija.
+
+**Una metrica que se llama como algo que no mide es peor que una que coincide con otra.** El
+corte de `cp_loss >= 250` que separa "piezas colgadas" de "graves" no excluye ni una jugada en
+produccion: el minimo real es 339 y la mediana 622, porque la clase 3 se define por win% y a 1250
+esa caida ya implica material. Se dejan las dos columnas para ver el dia que difieran, y la
+portada lo dice en una linea. **Antes de nombrar una metrica, corre el corte contra los datos y
+mira cuantas filas separa.**
+
+**Toda suma sobre jugadas propias se normaliza por jugada.** El PVR original es una suma, asi que
+una partida de 80 jugadas "regala" mas que una de 30 aunque se juegue igual: sin dividir, la
+metrica premia perder rapido. Vale para cualquier metrica futura que sume sobre plies.
+
+**Dos ejes en un grafico solo cuando las unidades NO se comparan.** `BalaVsRating` los usa porque
+son dos hechos sobre el mismo tiempo, no dos magnitudes que compitan; el pie dice correlacion y
+no causa, y nombra la explicacion contraria. Si alguna vez las dos series son comparables, un
+grafico con dos ejes es una forma de elegir la conclusion.
