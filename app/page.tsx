@@ -31,7 +31,7 @@ import { Button, Pagina, Progreso } from '@/components/ui';
 import { MonthCalendar } from '@/components/charts/MonthCalendar';
 import { Sparkline } from '@/components/charts/Sparkline';
 import { BalaVsRating, type MesBalaRating } from '@/components/charts/BalaVsRating';
-import { cierreDeSemana, semanaDelCiclo } from '@/lib/ciclo/semana';
+import { cierreDeSemana, loQueFaltaParaConcluir, semanaDelCiclo } from '@/lib/ciclo/semana';
 
 export const dynamic = 'force-dynamic';
 
@@ -238,6 +238,10 @@ export default async function Portada() {
       ? cierreDeSemana(await erroresPorSemana().catch(() => []), semana.tema.themes, ahora)
       : null;
 
+  // Lo que gana una partida mas, dicho en partidas y solo cuando es verdad. Si la comparacion ya
+  // concluye, `loQueFaltaParaConcluir` devuelve null y la portada no promete nada.
+  const falta = loQueFaltaParaConcluir(cierre);
+
   const calendario = (porDia ?? [])
     .filter((d) => d.day_local !== null)
     .map((d) => ({
@@ -412,7 +416,13 @@ export default async function Portada() {
                 detalle={
                   metaDeHoy === 0
                     ? `${rapidas} de rápida este mes. Sigue jugando.`
-                    : `Llevas ${jugadasHoy} hoy · ${rapidas} de ${META_MENSUAL} este mes, y quedan ${diasRestantes} días.`
+                    : `Llevas ${jugadasHoy} hoy · ${rapidas} de ${META_MENSUAL} este mes, y quedan ${diasRestantes} días.${
+                        falta !== null && falta.faltanEstaSemana > 0
+                          ? ` A ${falta.faltanEstaSemana} más esta semana, la comparación de arriba empieza a tener muestra${
+                              falta.faltanAnteriores > 0 ? ' de tu lado' : ''
+                            }.`
+                          : ''
+                      }`
                 }
                 accion={
                   metaDeHoy === 0 ? null : (
