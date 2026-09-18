@@ -145,4 +145,14 @@ union all
          coalesce(count(*) filter (where phase = 2) * 100.0 / nullif(count(*), 0), 0) < 35,
          'mas del 35% de las jugadas propias en fase final significa que el umbral de '
          'lib/chess/phase.ts esta mal calibrado, no que se jueguen muchos finales'
-  from moves where is_mine;
+  from moves where is_mine
+union all
+  -- Agregado al terminar la Fase 4, cuando la reingesta completa poblo `rated` en las 10.134.
+  -- A partir de ahi, una fila sin `rated` solo puede venir de una ingesta que dejo de mandarlo:
+  -- es una regresion, no un dato que falte. Antes de esa reingesta este chequeo habria estado
+  -- rojo por diseno, que es la razon por la que no existia.
+  select 'partidas_sin_rated',
+         count(*), count(*) = 0,
+         'toda partida ingerida trae `rated` del JSON de chess.com. Una fila sin el significa que '
+         'la ingesta dejo de mapearlo'
+  from games where rated is null;
