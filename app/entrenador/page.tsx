@@ -8,6 +8,7 @@ import {
 } from '@/lib/data';
 import Link from 'next/link';
 import { TEXTO_CONCEPTO, type Concepto } from '@/lib/puzzles/explain';
+import { semanaDelCiclo } from '@/lib/ciclo/semana';
 import { Ayuda, EmptyState, Pagina } from '@/components/ui';
 import { TrainerBoard } from '@/components/TrainerBoard';
 
@@ -72,6 +73,7 @@ export default async function EntrenadorPage({
   //   ?tema=          la sesion dedicada a un patron
   //   sin nada        la cola dirigida: primero las derrotas de rapida de los ultimos 7 dias
   const { partida, ply, tema } = await searchParams;
+  const semana = semanaDelCiclo(new Date());
   const gameId = partida ? Number.parseInt(partida, 10) : NaN;
   const plyPedido = ply ? Number.parseInt(ply, 10) : NaN;
 
@@ -82,7 +84,7 @@ export default async function EntrenadorPage({
       ? puzzleAt(gameId, plyPedido).then((p) => p ?? nextDuePuzzle())
       : Number.isFinite(gameId)
         ? nextPuzzleDeLaPartida(gameId).then((p) => p ?? nextDuePuzzle())
-        : nextDuePuzzle(tema ?? null),
+        : nextDuePuzzle(tema ?? null, semana?.tema.themes ?? []),
     adorno(dueCount(), 0),
     adorno(conceptosFallados(), []),
     adorno(sessionToday(), []),

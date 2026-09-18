@@ -82,6 +82,7 @@ export type Database = {
           inaccuracies: number | null
           created_at: string
           skip_reason: string | null
+          rated: boolean | null
         }
         Insert: {
           id?: number
@@ -120,6 +121,7 @@ export type Database = {
           inaccuracies?: number | null
           created_at?: string
           skip_reason?: string | null
+          rated?: boolean | null
         }
         Update: {
           id?: number
@@ -158,6 +160,7 @@ export type Database = {
           inaccuracies?: number | null
           created_at?: string
           skip_reason?: string | null
+          rated?: boolean | null
         }
         Relationships: [
           {
@@ -441,6 +444,33 @@ export type Database = {
             referencedColumns: ["id"]
           }
         ]
+      }
+      repertoire: {
+        Row: {
+          id: string
+          nombre: string
+          color: Database["public"]["Enums"]["game_color"]
+          plies: number[]
+          sans: string[]
+          nota: string | null
+        }
+        Insert: {
+          id: string
+          nombre: string
+          color: Database["public"]["Enums"]["game_color"]
+          plies: number[]
+          sans: string[]
+          nota?: string | null
+        }
+        Update: {
+          id?: string
+          nombre?: string
+          color?: Database["public"]["Enums"]["game_color"]
+          plies?: number[]
+          sans?: string[]
+          nota?: string | null
+        }
+        Relationships: []
       }
       schema_migrations: {
         Row: {
@@ -887,6 +917,40 @@ export type Database = {
           n: number | null
           aprovechados: number | null
           aprovechamiento_lower: number | null
+        }
+        Relationships: []
+      }
+      v_repertorio_partida: {
+        Row: {
+          game_id: number | null
+          end_time: string | null
+          month_local: string | null
+          my_color: Database["public"]["Enums"]["game_color"] | null
+          result: Database["public"]["Enums"]["game_result"] | null
+          score: number | null
+          opening_id: string | null
+          repertorio_id: string | null
+        }
+        Relationships: []
+      }
+      v_repertorio_rendimiento: {
+        Row: {
+          repertorio_id: string | null
+          nombre: string | null
+          my_color: Database["public"]["Enums"]["game_color"] | null
+          n: number | null
+          score_pct: number | null
+          score_pct_lower: number | null
+        }
+        Relationships: []
+      }
+      v_respuestas_del_rival: {
+        Row: {
+          my_color: Database["public"]["Enums"]["game_color"] | null
+          apertura: string | null
+          n: number | null
+          score_pct: number | null
+          score_pct_lower: number | null
         }
         Relationships: []
       }

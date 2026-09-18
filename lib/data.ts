@@ -9,7 +9,6 @@ import type { Database } from '@/lib/database.types';
 type Views = Database['public']['Views'];
 export type MonthlyActivity = Views['v_monthly_activity_wilson']['Row'];
 export type MonthlySummary = Views['v_monthly_summary']['Row'];
-export type OpeningResolution = Views['v_opening_resolution']['Row'];
 export type OpeningPerformance = Views['v_opening_performance']['Row'];
 export type ByHour = Views['v_by_hour']['Row'];
 export type BySessionIndex = Views['v_by_session_index']['Row'];
@@ -32,6 +31,8 @@ export type Puzzle = Database['public']['Tables']['puzzles']['Row'];
 export type DerrotaSinRevisar = Views['v_derrotas_sin_revisar']['Row'];
 export type MotivoDeDerrota = Views['v_motivos_de_derrota']['Row'];
 export type GameReview = Database['public']['Tables']['game_reviews']['Row'];
+export type RepertorioRendimiento = Views['v_repertorio_rendimiento']['Row'];
+export type RespuestaDelRival = Views['v_respuestas_del_rival']['Row'];
 export type NorthStar = Views['v_north_star']['Row'];
 export type NorthStarMensual = Views['v_north_star_mensual']['Row'];
 export type ConversionDeVentaja = Views['v_conversion_de_ventaja']['Row'];
@@ -72,11 +73,6 @@ export async function monthlySummary(month: string): Promise<MonthlySummary | nu
   return data;
 }
 
-export async function openingResolution(): Promise<OpeningResolution | null> {
-  const { data, error } = await supabaseAdmin().from('v_opening_resolution').select('*').maybeSingle();
-  if (error) fail('v_opening_resolution', error.message);
-  return data;
-}
 
 export async function openingPerformance(): Promise<OpeningPerformance[]> {
   const { data, error } = await supabaseAdmin()
@@ -246,21 +242,40 @@ export async function errorsByMoveTime(): Promise<ErrorsByMoveTime[]> {
  * afuera (ver la migracion 0007). Ahora se sirven igual y la UI avisa que hay mas de una jugada
  * buena, que es informacion util y no un motivo para esconder el ejercicio.
  */
-export async function nextDuePuzzle(tema?: string | null): Promise<Puzzle | null> {
-  let query = supabaseAdmin()
-    .from('v_cola_de_ejercicios')
-    .select('*')
-    .lte('due_at', new Date().toISOString())
-    // La sesion dirigida: primero los errores de una derrota de rapida de los ultimos 7 dias,
-    // que es cuando la partida todavia se recuerda y el ejercicio ensena el doble. `prioridad`
-    // la calcula la vista; aca solo se respeta el orden.
-    .order('prioridad', { ascending: true })
-    .order('due_at', { ascending: true })
-    .limit(1);
-  if (tema) query = query.eq('theme', tema);
-  const { data, error } = await query.maybeSingle();
-  if (error) fail('v_cola_de_ejercicios', error.message);
-  return data as Puzzle | null;
+export async function nextDuePuzzle(
+  tema?: string | null,
+  temasDeLaSemana: readonly string[] = [],
+): Promise<Puzzle | null> {
+  async function cola(filtro?: { uno?: string; varios?: readonly string[] }): Promise<Puzzle | null> {
+    let query = supabaseAdmin()
+      .from('v_cola_de_ejercicios')
+      .select('*')
+      .lte('due_at', new Date().toISOString())
+      // La sesion dirigida: primero los errores de una derrota de rapida de los ultimos 7 dias,
+      // que es cuando la partida todavia se recuerda y el ejercicio ensena el doble. `prioridad`
+      // la calcula la vista; aca solo se respeta el orden.
+      .order('prioridad', { ascending: true })
+      .order('due_at', { ascending: true })
+      .limit(1);
+    if (filtro?.uno) query = query.eq('theme', filtro.uno);
+    if (filtro?.varios && filtro.varios.length > 0) query = query.in('theme', [...filtro.varios]);
+    const { data, error } = await query.maybeSingle();
+    if (error) fail('v_cola_de_ejercicios', error.message);
+    return data as Puzzle | null;
+  }
+
+  // Un tema elegido a mano manda sobre todo lo demas: lo pidio el alumno.
+  if (tema) return cola({ uno: tema });
+
+  // El tema de la semana es el tercer nivel de prioridad, y es BLANDO: si no hay ninguno vencido
+  // de ese patron, se sirve la cola normal en vez de decir "no hay ejercicios". Cinco de los ocho
+  // temas del ciclo no tienen ejercicios posibles (finales, estructuras), asi que un filtro duro
+  // dejaria al entrenador vacio cinco semanas de cada ocho.
+  if (temasDeLaSemana.length > 0) {
+    const deLaSemana = await cola({ varios: temasDeLaSemana });
+    if (deLaSemana) return deLaSemana;
+  }
+  return cola();
 }
 
 /**
@@ -591,6 +606,32 @@ export async function idsRevisados(): Promise<Set<number>> {
   const { data, error } = await supabaseAdmin().from('game_reviews').select('game_id');
   if (error) fail('game_reviews', error.message);
   return new Set((data ?? []).map((r) => r.game_id));
+}
+
+/**
+ * Rendimiento por entrada del repertorio DECLARADO, no por la apertura que ocurrio.
+ *
+ * La fila `fuera` no es un residuo que se esconde: es el tamano del problema. Medido en
+ * produccion, con blancas son 795 partidas contra 507 que si llegan al Ponziani.
+ */
+export async function repertorioRendimiento(): Promise<RepertorioRendimiento[]> {
+  const { data, error } = await supabaseAdmin()
+    .from('v_repertorio_rendimiento')
+    .select('*')
+    .order('n', { ascending: false });
+  if (error) fail('v_repertorio_rendimiento', error.message);
+  return data ?? [];
+}
+
+/** Que le juegan cuando NO llega a su repertorio. Es la mitad del diagnostico que no pide motor. */
+export async function respuestasDelRival(minimo = 20): Promise<RespuestaDelRival[]> {
+  const { data, error } = await supabaseAdmin()
+    .from('v_respuestas_del_rival')
+    .select('*')
+    .gte('n', minimo)
+    .order('n', { ascending: false });
+  if (error) fail('v_respuestas_del_rival', error.message);
+  return data ?? [];
 }
 
 /**

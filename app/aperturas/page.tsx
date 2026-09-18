@@ -1,5 +1,11 @@
 import Link from 'next/link';
-import { openingPerformance, coberturaAnalisis, type OpeningPerformance } from '@/lib/data';
+import {
+  coberturaAnalisis,
+  openingPerformance,
+  repertorioRendimiento,
+  respuestasDelRival,
+  type OpeningPerformance,
+} from '@/lib/data';
 import {
   Ayuda,
   Badge,
@@ -61,6 +67,26 @@ export default async function AperturasPage({
   const analizadas = deLaClase?.n_analyzed ?? 0;
   const totalPartidas = deLaClase?.n_analizables ?? 0;
 
+  // El repertorio DECLARADO. Va con `.catch` porque lo crea la migracion 0016: sin ella la
+  // pagina sigue sirviendo lo de siempre en vez de caerse.
+  const repertorio = await repertorioRendimiento().catch(() => []);
+  const respuestas = await respuestasDelRival(20).catch(() => []);
+
+  const entradas = repertorio.filter((r) => r.repertorio_id !== 'fuera' && (r.n ?? 0) > 0);
+  const fuera = repertorio.filter((r) => r.repertorio_id === 'fuera');
+  const nDentro = entradas.reduce((a, r) => a + (r.n ?? 0), 0);
+  const nFuera = fuera.reduce((a, r) => a + (r.n ?? 0), 0);
+  const nTotalRep = nDentro + nFuera;
+
+  // La conclusion la escribe la app comparando los dos grupos, NO un texto fijo. La diferencia
+  // medida hoy es de tres milesimas, asi que un parrafo que dijera "tu repertorio funciona y lo
+  // de afuera no" seria un hallazgo inventado sobre una diferencia que no existe.
+  const scoreDentro =
+    nDentro > 0 ? entradas.reduce((a, r) => a + (r.score_pct ?? 0) * (r.n ?? 0), 0) / nDentro : null;
+  const scoreFuera =
+    nFuera > 0 ? fuera.reduce((a, r) => a + (r.score_pct ?? 0) * (r.n ?? 0), 0) / nFuera : null;
+  const diferencia = scoreDentro !== null && scoreFuera !== null ? scoreDentro - scoreFuera : null;
+
   const signo = dir === 'asc' ? 1 : -1;
   const comparar = (a: OpeningPerformance, b: OpeningPerformance): number => {
     if (sort === 'n') return signo * ((a.n ?? 0) - (b.n ?? 0));
@@ -110,6 +136,88 @@ export default async function AperturasPage({
       }
     >
       <div className="space-y-6">
+        {nTotalRep > 0 ? (
+          <Panel
+            title={`Llegaste a tu repertorio en ${nDentro.toLocaleString('es-CL')} de ${nTotalRep.toLocaleString('es-CL')} partidas`}
+            subtitle="Tu repertorio declarado, agrupado por las jugadas que lo definen y no por el nombre de la apertura"
+          >
+            <Tabla
+              aligns={['text', 'text', 'num', 'num']}
+              headers={['Línea', 'Color', 'Partidas', <span key="r">Rendimiento{AYUDA_RENDIMIENTO}</span>]}
+            >
+              {[...entradas, ...fuera].map((r) => (
+                <Fila key={`${r.repertorio_id}-${r.my_color}`} atenuada={(r.n ?? 0) < 20}>
+                  <Td>
+                    {r.repertorio_id === 'fuera' ? (
+                      <span className="text-tenue">No llegaste a tu repertorio</span>
+                    ) : (
+                      (r.nombre ?? r.repertorio_id)
+                    )}
+                  </Td>
+                  <Td>{r.my_color === 'white' ? 'blancas' : 'negras'}</Td>
+                  <Td num>{(r.n ?? 0).toLocaleString('es-CL')}</Td>
+                  <Td num>
+                    <Rendimiento pctValue={r.score_pct} wilson={r.score_pct_lower} n={r.n ?? 0} />
+                  </Td>
+                </Fila>
+              ))}
+            </Tabla>
+
+            {diferencia !== null ? (
+              <p className="mt-3.5 text-sm leading-relaxed">
+                {Math.abs(diferencia) < 0.03 ? (
+                  <>
+                    Dentro de tu repertorio rindes {(scoreDentro! * 100).toFixed(1)}% y fuera{' '}
+                    {(scoreFuera! * 100).toFixed(1)}%: <strong>prácticamente lo mismo</strong>. Eso
+                    quiere decir que llegar a tu línea preparada no te está dando ventaja, y que el
+                    problema no es qué te juegan sino qué haces después. Mira las entradas por
+                    separado abajo: ahí sí hay diferencias.
+                  </>
+                ) : diferencia > 0 ? (
+                  <>
+                    Dentro de tu repertorio rindes {((diferencia ?? 0) * 100).toFixed(1)} puntos
+                    mejor que fuera. Preparar las respuestas que te sacan de él es trabajo con
+                    retorno medible.
+                  </>
+                ) : (
+                  <>
+                    Rindes {(Math.abs(diferencia ?? 0) * 100).toFixed(1)} puntos <strong>peor</strong>{' '}
+                    dentro de tu repertorio que fuera. Vale la pena revisar si la línea que
+                    preparaste te acomoda de verdad.
+                  </>
+                )}
+              </p>
+            ) : null}
+          </Panel>
+        ) : null}
+
+        {respuestas.length > 0 ? (
+          <Panel
+            title="Qué te juegan cuando te sacan del repertorio"
+            subtitle="Solo las respuestas con 20 partidas o más, que son las que permiten una conclusión"
+          >
+            <Tabla
+              aligns={['text', 'text', 'num', 'num']}
+              headers={['Te jugaron', 'Con', 'Partidas', <span key="r2">Rendimiento{AYUDA_RENDIMIENTO}</span>]}
+            >
+              {respuestas.map((r) => (
+                <Fila key={`${r.apertura}-${r.my_color}`}>
+                  <Td className="max-w-[16rem] truncate">{r.apertura}</Td>
+                  <Td>{r.my_color === 'white' ? 'blancas' : 'negras'}</Td>
+                  <Td num>{(r.n ?? 0).toLocaleString('es-CL')}</Td>
+                  <Td num>
+                    <Rendimiento pctValue={r.score_pct} wilson={r.score_pct_lower} n={r.n ?? 0} />
+                  </Td>
+                </Fila>
+              ))}
+            </Tabla>
+            <p className="mt-3 text-[12.5px] text-tenue">
+              Cada fila de arriba es una semana de estudio perfectamente definida: son las
+              posiciones que ya te aparecieron decenas de veces y para las que no tienes plan.
+            </p>
+          </Panel>
+        ) : null}
+
         {(['white', 'black'] as const).map((color) => {
           const barras = peores(color);
           const tabla = porColor(color);

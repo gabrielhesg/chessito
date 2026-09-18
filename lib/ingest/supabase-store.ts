@@ -1,6 +1,7 @@
 import 'server-only';
 import type { AdminClient } from '@/lib/supabase/admin';
 import type { GameRow } from '@/lib/chess/game';
+import { sinColumnasDeEstado } from './columnas';
 import type { MoveRow } from '@/lib/chess/moves';
 import type { Json } from '@/lib/database.types';
 import type {
@@ -32,12 +33,45 @@ export class SupabaseIngestStore implements IngestStore {
     return index;
   }
 
+  /**
+   * Dos upserts, no uno, y la razon es un invariante del proyecto que este transporte rompia:
+   * **reingerir una partida ya analizada no puede borrar su analisis.**
+   *
+   * `runIngest` reingiere el archivo mensual COMPLETO, no solo lo nuevo (`findExistingUuids` se
+   * usa despues, para la reconciliacion). Con un solo upsert de la fila entera, PostgREST hace
+   * `on conflict do update set` de TODAS las columnas, asi que cada corrida del cron de Vercel
+   * devolvia a `pending` las partidas del mes en curso que el motor ya habia analizado — y a
+   * `null` su `skip_reason`. `PgIngestStore` nunca tuvo el problema porque excluye las dos
+   * columnas de su lista de update a proposito (ver su comentario).
+   *
+   * Medido en produccion al encontrarlo: 0 partidas afectadas. Es un bug latente, no uno que ya
+   * haya pegado — el cron de Actions usa el otro transporte, y el de Vercel no habia corrido
+   * sobre un mes recien analizado. Con 1.678 partidas de rapida analizadas, la proxima corrida
+   * si habria pegado.
+   */
   async upsertGames(rows: GameRow[]): Promise<void> {
     if (rows.length === 0) return;
-    const { error } = await this.client
-      .from('games')
-      .upsert(rows, { onConflict: 'chesscom_uuid', ignoreDuplicates: false });
-    if (error) throw new Error(`No se pudieron guardar las partidas: ${error.message}`);
+
+    const existentes = await this.findExistingUuids(rows.map((r) => r.chesscom_uuid));
+    const nuevas = rows.filter((r) => !existentes.has(r.chesscom_uuid));
+    const yaEstaban = rows.filter((r) => existentes.has(r.chesscom_uuid));
+
+    if (nuevas.length > 0) {
+      // Las nuevas SI llevan el estado: es la unica vez que se decide, y una variante o una
+      // partida por correspondencia tiene que nacer `skipped` con su motivo.
+      const { error } = await this.client
+        .from('games')
+        .upsert(nuevas, { onConflict: 'chesscom_uuid', ignoreDuplicates: false });
+      if (error) throw new Error(`No se pudieron guardar las partidas: ${error.message}`);
+    }
+
+    if (yaEstaban.length > 0) {
+      const sinEstado = yaEstaban.map(sinColumnasDeEstado);
+      const { error } = await this.client
+        .from('games')
+        .upsert(sinEstado, { onConflict: 'chesscom_uuid', ignoreDuplicates: false });
+      if (error) throw new Error(`No se pudieron actualizar las partidas: ${error.message}`);
+    }
   }
 
   async insertOpenings(rows: OpeningInsert[]): Promise<void> {

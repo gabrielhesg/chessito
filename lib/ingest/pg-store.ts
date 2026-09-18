@@ -46,6 +46,7 @@ const GAME_COLUMNS = [
   'pgn',
   'analysis_state',
   'skip_reason',
+  'rated',
 ] as const;
 
 export class PgIngestStore implements IngestStore {

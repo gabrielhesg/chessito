@@ -70,6 +70,12 @@ export type GameRow = {
   analysis_state: AnalysisState;
   /** NULL en toda partida analizable. Lo vigila el chequeo `skipped_sin_motivo`. */
   skip_reason: SkipReason | null;
+  /**
+   * Si la partida contaba para el rating. Viene del JSON de chess.com y NO del PGN, asi que el
+   * historico solo se puebla reingiriendo. `null` cuando chess.com no lo manda, que es distinto
+   * de `false`: por eso las vistas filtran `rated is not false`.
+   */
+  rated: boolean | null;
 };
 
 export type MapGameOptions = {
@@ -153,5 +159,6 @@ export function mapGame(game: ChesscomGame, options: MapGameOptions): GameRow {
     pgn,
     analysis_state: analysisState,
     skip_reason: skipReason,
+    rated: game.rated ?? null,
   };
 }
