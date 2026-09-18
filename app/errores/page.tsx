@@ -1,4 +1,13 @@
-import { coberturaAnalisis, errorsByMoveTime, errorsByPhase, errorsDiagnostic } from '@/lib/data';
+import Link from 'next/link';
+import {
+  coberturaAnalisis,
+  conversionDeVentaja,
+  errorsByMoveTime,
+  errorsByPhase,
+  errorsDiagnostic,
+  regalosMensual,
+  ventajasNoConvertidas,
+} from '@/lib/data';
 import {
   Ayuda,
   Badge,
@@ -36,6 +45,17 @@ export default async function ErroresPage() {
     errorsByPhase(),
     errorsByMoveTime(),
   ]);
+
+  // Los dos paneles de la Fase 3 de la revision van con `.catch`: los crea la migracion 0015 y,
+  // como son diagnostico y no el tema de la pagina, no pueden tumbarla si no esta aplicada.
+  const [conversion, sinConvertir, regalos] = await Promise.all([
+    conversionDeVentaja().catch(() => null),
+    ventajasNoConvertidas(6).catch(() => []),
+    regalosMensual().catch(() => []),
+  ]);
+  const regalosRecientes = regalos.slice(-6);
+  const totalRegalos = regalosRecientes.reduce((a, r) => a + (r.n ?? 0), 0);
+  const totalAprovechados = regalosRecientes.reduce((a, r) => a + (r.aprovechados ?? 0), 0);
 
   // El analisis cuenta SOLO rapida. En bala y en blitz no hay tiempo para calcular: un error ahi
   // dice mas del reloj que de lo que entiendes, y mezclarlo desplaza la conclusion justo en la
@@ -312,6 +332,92 @@ export default async function ErroresPage() {
             </div>
           )}
         </Panel>
+
+        {conversion !== null && (conversion.n ?? 0) > 0 ? (
+          <Panel
+            title={
+              (conversion.n ?? 0) < 20
+                ? 'Cuando estuviste mejor'
+                : `De cada 10 partidas que tuviste ganadas, cerraste ${Math.round(((conversion.ganadas ?? 0) / (conversion.n ?? 1)) * 10)}`
+            }
+            subtitle="Partidas de rápida donde la evaluación llegó a +200 a tu favor fuera del libro, las últimas 30"
+          >
+            <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
+              <p className="text-[26px] font-semibold tabular-nums">
+                {conversion.ganadas ?? 0}
+                <span className="text-[15px] font-normal text-apagado"> de {conversion.n}</span>
+              </p>
+              <p className="text-[12.5px] text-tenue">
+                {conversion.tablas ?? 0} en tablas · {conversion.perdidas ?? 0} perdidas
+              </p>
+            </div>
+            <p className="mt-3 text-sm leading-relaxed">
+              {(conversion.n ?? 0) < 20 ? (
+                <>
+                  Con {conversion.n} partidas todavía no hay conclusión: el umbral son 20. El
+                  número está acá para que se vea crecer.
+                </>
+              ) : (
+                <>
+                  Acá el error no fue táctico: la posición estaba bien y algo pasó después. Es la
+                  traducción medible de &ldquo;no sé qué hacer en el medio juego&rdquo;, y es el
+                  mejor material de revisión que tienes — mejor que cualquier blunder suelto.
+                </>
+              )}
+            </p>
+
+            {sinConvertir.length > 0 ? (
+              <ul className="mt-4 flex list-none flex-col gap-1.5 p-0">
+                {sinConvertir.map((p) => (
+                  <li key={p.game_id} className="flex flex-wrap items-baseline justify-between gap-2 text-[13px]">
+                    <span className="min-w-0 truncate text-tenue">
+                      contra {p.opp_username} · llegaste a{' '}
+                      <span className="tabular-nums text-texto">
+                        +{(((p.ventaja_maxima ?? 0) / 100)).toFixed(1)}
+                      </span>
+                      {p.ply_perdida !== null ? (
+                        <> y la soltaste en la jugada {Math.ceil((p.ply_perdida ?? 0) / 2)}</>
+                      ) : null}
+                    </span>
+                    <Link
+                      href={p.ply_perdida === null ? `/partida/${p.game_id}` : `/partida/${p.game_id}?ply=${p.ply_perdida}`}
+                      className="shrink-0 text-acento hover:underline"
+                    >
+                      Ver
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </Panel>
+        ) : null}
+
+        {totalRegalos > 0 ? (
+          <Panel
+            title={`Tu rival te regaló ${totalRegalos.toLocaleString('es-CL')} veces y cobraste ${totalAprovechados.toLocaleString('es-CL')}`}
+            subtitle="Errores graves del rival en rápida, y si tu jugada siguiente los devolvió. Últimos meses con datos"
+          >
+            <Tabla
+              aligns={['text', 'num', 'num', 'num']}
+              headers={['Mes', 'Regalos', 'Cobrados', '% (Wilson)']}
+            >
+              {regalosRecientes.map((m) => (
+                <Fila key={m.month_local} atenuada={(m.n ?? 0) < 20}>
+                  <Td>{m.month_local}</Td>
+                  <Td num>{(m.n ?? 0).toLocaleString('es-CL')}</Td>
+                  <Td num>{(m.aprovechados ?? 0).toLocaleString('es-CL')}</Td>
+                  <Td num>{pct(m.aprovechamiento_lower)}</Td>
+                </Fila>
+              ))}
+            </Tabla>
+            <p className="mt-3 text-[12.5px] text-tenue">
+              &ldquo;Cobrado&rdquo; no significa que ganaras la partida: significa que tu jugada
+              siguiente no devolvió la ventaja. Es el espejo de tu propia tasa de error, y a tu
+              nivel es más accionable — las partidas se deciden tanto por lo que el rival regala
+              como por lo que tú entregas.
+            </p>
+          </Panel>
+        ) : null}
       </div>
     </Pagina>
   );

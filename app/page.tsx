@@ -17,12 +17,16 @@ import {
   openingPerformance,
   rapidasDeHoy,
   ratingMaximo,
+  coberturaAnalisis,
   derrotasSinRevisar,
+  northStar,
+  northStarMensual,
 } from '@/lib/data';
 import { formatTimeControl } from '@/lib/chess/timecontrol';
 import { Button, Pagina, Progreso } from '@/components/ui';
 import { MonthCalendar } from '@/components/charts/MonthCalendar';
 import { Sparkline } from '@/components/charts/Sparkline';
+import { BalaVsRating, type MesBalaRating } from '@/components/charts/BalaVsRating';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,6 +38,9 @@ const META_MENSUAL = 30;
  * una razon para cerrar la app. El atraso de repeticion espaciada es la falla tipica del
  * metodo (Chessable lo documenta) y mostrarlo entero en la primera pantalla es su forma extrema.
  */
+/** El umbral del proyecto para presentar un corte como hallazgo. */
+const N_MINIMO = 20;
+
 const EJERCICIOS_POR_SESION = 10;
 
 /** La clase de tiempo del plan de entrenamiento. Todo lo que mide esta pagina cuenta esta. */
@@ -185,6 +192,35 @@ export default async function Portada() {
   const ratingPrevio = serieRating.at(-2);
   const deltaRating = ratingActual !== undefined && ratingPrevio !== undefined ? ratingActual - ratingPrevio : null;
   const maximo = await ratingMaximo(CLASE).catch(() => null);
+
+  // La North Star y su serie. Van con `.catch` porque las crea la migracion 0015: si no esta
+  // aplicada, el bloque se degrada en vez de tumbar la portada — misma decision que `gamesByDay`
+  // tomo con la 0008.
+  const estrella = await northStar().catch(() => null);
+  const serieEstrella = await northStarMensual().catch(() => []);
+  const cobertura = await coberturaAnalisis().catch(() => []);
+  const coberturaRapida = cobertura.find((c) => c.time_class === CLASE);
+  const analizadasRapida = coberturaRapida?.n_analyzed ?? 0;
+  // El denominador honesto es lo ANALIZABLE, no el total: lo excluido por un motivo nunca va a
+  // entrar al motor y no pertenece a la cuenta. Mismo criterio que /errores.
+  const analizablesRapida = coberturaRapida?.n_analizables ?? 0;
+
+  // La serie solo dibuja los meses que pasan el umbral. Un mes con 4 partidas analizadas movería
+  // la curva tanto como uno con 400, y la curva se lee como tendencia.
+  const serieConMuestra = serieEstrella.filter((m) => (m.n ?? 0) >= N_MINIMO);
+
+  // La serie que la revision cruzada llamo "la conversacion con el alumno": cuanta bala jugo
+  // cada mes contra donde quedo su rating de rapida. Su maximo (1.464) es del mes de 408
+  // partidas de rapida; hoy es 1.268 con cientos de bala al mes. Los dos hechos, el mismo eje.
+  const mesesDelGrafico = [...new Set(meses.map((m) => m.month_local).filter((m): m is string => m !== null))]
+    .sort()
+    .slice(-18);
+  const balaVsRating: MesBalaRating[] = mesesDelGrafico.map((mes) => ({
+    mes,
+    bala: meses.find((m) => m.month_local === mes && m.time_class === 'bullet')?.n ?? 0,
+    rating: meses.find((m) => m.month_local === mes && m.time_class === CLASE)?.rating_at_month_end ?? null,
+  }));
+  const mesesConRating = balaVsRating.filter((m) => m.rating !== null).length;
 
   const calendario = (porDia ?? [])
     .filter((d) => d.day_local !== null)
@@ -421,6 +457,58 @@ export default async function Portada() {
               </div>
             </div>
             <div className="rounded-[14px] border border-borde bg-panel px-4.5 py-4">
+              <p className="eyebrow">Piezas colgadas por partida</p>
+              {estrella !== null && (estrella.n ?? 0) > 0 ? (
+                <>
+                  <div className="mt-2 flex items-baseline gap-2.5">
+                    <span
+                      className={`text-[30px] font-semibold leading-none tabular-nums ${
+                        (estrella.n ?? 0) < N_MINIMO ? 'text-tenue' : ''
+                      }`}
+                    >
+                      {(estrella.piezas_por_partida ?? 0).toFixed(2)}
+                    </span>
+                    <span className="text-[12.5px] text-apagado">
+                      en tus últimas {estrella.n} de rápida
+                    </span>
+                  </div>
+                  {serieConMuestra.length >= 3 ? (
+                    <div className="mt-3">
+                      <Sparkline valores={serieConMuestra.map((m) => m.piezas_por_partida ?? 0)} tono="critico" area />
+                      <p className="mt-1.5 text-2xs text-apagado">
+                        {serieConMuestra.length} meses con 20 o más partidas analizadas ·{' '}
+                        {serieConMuestra[0]?.month_local} a {serieConMuestra.at(-1)?.month_local}
+                      </p>
+                    </div>
+                  ) : null}
+                  <p className="mt-2.5 text-[12.5px] text-tenue">
+                    {(estrella.n ?? 0) < N_MINIMO ? (
+                      <>
+                        Con {estrella.n} partidas todavía no es una conclusión: el umbral son{' '}
+                        {N_MINIMO}.
+                      </>
+                    ) : (
+                      <>
+                        Menos es mejor. A tu nivel todo error grave cuesta material, así que este
+                        número es también tu tasa de errores graves.
+                      </>
+                    )}
+                  </p>
+                  <p className="mt-1.5 text-2xs text-apagado">
+                    Regalas {(estrella.pvr_por_jugada ?? 0).toFixed(1)}% de probabilidad de
+                    victoria por jugada · {analizadasRapida.toLocaleString('es-CL')} de{' '}
+                    {analizablesRapida.toLocaleString('es-CL')} partidas de rápida analizadas
+                  </p>
+                </>
+              ) : (
+                <PendienteDeDatos>
+                  Necesita la vista <code>v_north_star</code>, que agrega la migración 0015, y al
+                  menos una partida de rápida analizada.
+                </PendienteDeDatos>
+              )}
+            </div>
+
+            <div className="rounded-[14px] border border-borde bg-panel px-4.5 py-4">
               <p className="eyebrow text-critico">Esto no mejora</p>
               <ul className="mt-3.5 flex list-none flex-col gap-3 p-0">
                 {peorApertura ? (
@@ -461,6 +549,21 @@ export default async function Portada() {
                 ) : null}
               </ul>
             </div>
+
+            {mesesConRating >= 3 ? (
+              <div className="rounded-[14px] border border-borde bg-panel px-4.5 py-4">
+                <p className="eyebrow">Bala contra tu rating de rápida</p>
+                <div className="mt-3">
+                  <BalaVsRating meses={balaVsRating} />
+                </div>
+                <p className="mt-3 text-[12.5px] leading-relaxed text-tenue">
+                  Los dos hechos sobre el mismo tiempo, para que los mires juntos. Es{' '}
+                  <strong>correlación, no causa</strong>: no hay forma de demostrar desde estos
+                  datos que la bala te bajó el rating, y podría ser al revés — que dejaras la
+                  rápida porque te estaba yendo mal.
+                </p>
+              </div>
+            ) : null}
           </section>
 
         </div>

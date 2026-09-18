@@ -216,3 +216,55 @@ pantallas tocadas, en `docs/review/capturas/fase2/`.
 1. **Aplicar 0012, 0013 y 0014** con el workflow `migraciones` en modo `aplicar`, desde `main`.
    Sin ellas, `/reloj`, la portada y el entrenador leen vistas que no existen.
 2. Nada más. El motor ya está corriendo y la ingesta encadena `moves:extract` sola.
+
+---
+
+# Fase 3 · Las dos debilidades, medidas
+
+Responde las dos preguntas que el alumno declaró de su propia boca y que la app no podía tocar.
+Una migración nueva (`0015`), ninguna página nueva. Todo sale de `moves`, que ya tenía la
+evaluación y la clasificación de **los dos bandos** desde la Fase 3 del proyecto: no hizo falta
+motor nuevo, lo que faltaba era mirar.
+
+| ID | Qué se construyó | Medido hoy |
+|---|---|---|
+| F3-01 | North Star: piezas colgadas por partida de rápida, en la portada | **0,75** en las últimas 20 |
+| F3-02 | PVR por jugada y cobertura, al lado | 5,14% de win% por jugada |
+| F3-03 | Conversión de ventaja, en `/errores`, con la lista enlazada | **16 de 30** |
+| F3-04 | Los regalos del rival que no castigó | 1.821 regalos, 1.109 cobrados |
+| F3-05 | Serie mensual y el gráfico de bala contra rating de rápida | 8 meses con muestra |
+
+363 tests en verde. Capturas a 390 px y 1280 px en `docs/review/capturas/fase3/`.
+
+## El hallazgo que salió de medir antes de construir
+
+El spec pide cortar las piezas colgadas por `cp_loss >= 250` para separarlas del error
+posicional. **En producción ese corte no excluye ni una jugada:** los 1.857 errores graves de
+rápida tienen `cp_loss >= 339`, con mediana 622.
+
+No es un defecto de la métrica, es un hecho sobre el jugador: la clase 3 se define por una caída
+de win% ≥ 30, y a 1250 una caída así ya implica material. **Todo error grave suyo cuesta
+material; no tiene blunders posicionales.** El corte y las dos columnas se dejan igual para que el
+día que dejen de coincidir se vea, y la portada lo dice en una línea en vez de fingir que mide dos
+cosas distintas.
+
+## Supuestos tomados
+
+1. **La North Star vive en la portada; conversión y regalos viven en `/errores`.** El plan no
+   decía dónde iban los dos últimos. La portada tiene que empujar a jugar, no a diagnosticar.
+2. **Ventana de 20 partidas para la North Star y 30 para la conversión.** La primera la fija el
+   spec; la segunda es más larga porque llegar a +200 no pasa en todas las partidas.
+3. **"Cobrado" no es ganar la partida**, es que la jugada siguiente no devolviera la ventaja, con
+   50 cp de tolerancia por ruido del motor.
+4. **El gráfico de bala contra rating usa dos ejes.** Normalmente es mala práctica, porque deja
+   elegir la escala hasta que las curvas digan lo que uno quiere. Se justifica porque las unidades
+   no se comparan entre sí: son dos hechos sobre el mismo tiempo. El pie dice **correlación, no
+   causa**, y nombra la explicación contraria (dejó la rápida porque le iba mal).
+5. **Los meses con n < 20 no entran a la serie.** Un mes de 4 partidas movería la curva igual que
+   uno de 400, y una curva se lee como tendencia.
+
+## Lo que hay que operar después de mergear
+
+Aplicar `0015` junto con `0012`, `0013` y `0014`, con el workflow `migraciones` en modo `aplicar`
+desde `main`. Sin ella, la portada degrada el bloque de la North Star y `/errores` no muestra los
+dos paneles nuevos — ninguna de las dos se cae, pero ninguna de las dos sirve.

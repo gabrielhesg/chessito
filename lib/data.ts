@@ -32,6 +32,11 @@ export type Puzzle = Database['public']['Tables']['puzzles']['Row'];
 export type DerrotaSinRevisar = Views['v_derrotas_sin_revisar']['Row'];
 export type MotivoDeDerrota = Views['v_motivos_de_derrota']['Row'];
 export type GameReview = Database['public']['Tables']['game_reviews']['Row'];
+export type NorthStar = Views['v_north_star']['Row'];
+export type NorthStarMensual = Views['v_north_star_mensual']['Row'];
+export type ConversionDeVentaja = Views['v_conversion_de_ventaja']['Row'];
+export type VentajaPorPartida = Views['v_ventaja_por_partida']['Row'];
+export type RegalosMensual = Views['v_regalos_mensual']['Row'];
 export type ReviewMotivo = Database['public']['Enums']['review_motivo'];
 
 function fail(view: string, message: string): never {
@@ -586,6 +591,68 @@ export async function idsRevisados(): Promise<Set<number>> {
   const { data, error } = await supabaseAdmin().from('game_reviews').select('game_id');
   if (error) fail('game_reviews', error.message);
   return new Set((data ?? []).map((r) => r.game_id));
+}
+
+/**
+ * La North Star: piezas colgadas por partida de rapida, sobre las ultimas 20 analizadas.
+ *
+ * Menor es mejor. Viene con `n` y con su metrica de apoyo (`pvr_por_jugada`) en la misma fila,
+ * porque la regla del proyecto es que ninguna cifra agregada se muestre sin su `n` — y una North
+ * Star sin su cobertura al lado es exactamente la clase de numero que este proyecto existe para
+ * no producir.
+ */
+export async function northStar(): Promise<NorthStar | null> {
+  const { data, error } = await supabaseAdmin().from('v_north_star').select('*').maybeSingle();
+  if (error) fail('v_north_star', error.message);
+  return data;
+}
+
+/** La serie mensual de la North Star, que es lo que llena "Estas mejorando" en la portada. */
+export async function northStarMensual(): Promise<NorthStarMensual[]> {
+  const { data, error } = await supabaseAdmin()
+    .from('v_north_star_mensual')
+    .select('*')
+    .order('month_local');
+  if (error) fail('v_north_star_mensual', error.message);
+  return data ?? [];
+}
+
+/** Conversion de ventaja: de las ultimas 30 partidas con +200 a favor, cuantas termino ganando. */
+export async function conversionDeVentaja(): Promise<ConversionDeVentaja | null> {
+  const { data, error } = await supabaseAdmin()
+    .from('v_conversion_de_ventaja')
+    .select('*')
+    .maybeSingle();
+  if (error) fail('v_conversion_de_ventaja', error.message);
+  return data;
+}
+
+/**
+ * Las partidas donde tuvo la ventaja y no la convirtio, de la mas reciente hacia atras.
+ *
+ * Es el mejor material de revision que tiene: ahi el error no fue tactico, y es donde se aprende
+ * plan. `ply_perdida` engancha con el entrenador.
+ */
+export async function ventajasNoConvertidas(limite = 8): Promise<VentajaPorPartida[]> {
+  const { data, error } = await supabaseAdmin()
+    .from('v_ventaja_por_partida')
+    .select('*')
+    .gte('ventaja_maxima', 200)
+    .neq('result', 'win')
+    .order('end_time', { ascending: false })
+    .limit(limite);
+  if (error) fail('v_ventaja_por_partida', error.message);
+  return data ?? [];
+}
+
+/** Los regalos del rival por mes, y cuantos se aprovecharon. */
+export async function regalosMensual(): Promise<RegalosMensual[]> {
+  const { data, error } = await supabaseAdmin()
+    .from('v_regalos_mensual')
+    .select('*')
+    .order('month_local');
+  if (error) fail('v_regalos_mensual', error.message);
+  return data ?? [];
 }
 
 /** Lo que el alumno dice que le pasa, agrupado, con cuanto se aleja del ply que senala el motor. */
