@@ -268,3 +268,70 @@ cosas distintas.
 Aplicar `0015` junto con `0012`, `0013` y `0014`, con el workflow `migraciones` en modo `aplicar`
 desde `main`. Sin ella, la portada degrada el bloque de la North Star y `/errores` no muestra los
 dos paneles nuevos — ninguna de las dos se cae, pero ninguna de las dos sirve.
+
+---
+
+# Fase 4 · Repertorio y ciclo
+
+La última, y la que menos daño repara: las tres anteriores arreglan cosas que estaban mal; esta
+agrega lo que faltaba. Una migración nueva (`0016`).
+
+| ID | Qué se construyó | Medido |
+|---|---|---|
+| F4-01 | Repertorio declarado en `/aperturas`, por jugadas y no por nombre | 1.550 de 2.588 llegan al repertorio |
+| F4-02 | Tema de la semana, derivado de una fecha | 8 temas, 7 tests |
+| F4-03 | `games.rated` poblada en la ingesta | pendiente de reingesta |
+| F4-04 | Limpieza de deuda de confianza | 3 vistas anotadas, 1 función borrada |
+
+373 tests en verde. Capturas en `docs/review/capturas/fase4/`.
+
+## Dos veces que los datos contradijeron al plan
+
+**1. El repertorio por nombre no sirve.** El plan asumía agrupar por `openings.name`. Medido: el
+Ponziani son 296 partidas por nombre y **507 por orden de jugadas**. La resolución por EPD reparte
+una misma línea entre muchos nombres según lo que haga el rival. El repertorio se declara por
+jugadas.
+
+**2. "Su repertorio con blancas funciona" no se sostiene.** El plan daba por hecho que el problema
+eran las respuestas no preparadas. Con el agrupamiento correcto: con blancas rinde **55,8% dentro
+del repertorio contra 55,5% fuera**; con negras, 49,2% contra 50,4%. En los dos colores es
+prácticamente lo mismo. La conclusión la escribe la app comparando, no un párrafo fijo — y por eso
+dice lo que los datos dicen y no lo que el plan esperaba.
+
+## Un defecto que me pillé a mí mismo
+
+La primera versión del panel comparaba "dentro" contra "fuera" **sumando los dos colores**. Con
+esos datos, "dentro del repertorio" son casi todas sus partidas con negras (957 de 1.043) y
+"fuera" casi todas las de blancas (795 de 1.038). Como con negras se rinde peor por razones que no
+tienen nada que ver con el repertorio, el panel mostraba una diferencia de 2,9 puntos que era puro
+efecto del color, y la habría presentado como un hallazgo sobre el repertorio.
+
+Salió de mirar la captura y recalcular a mano, no de un test. La comparación ahora va dentro de
+cada color y la página explica por qué, en una línea.
+
+## Un bug latente encontrado al tocar la ingesta
+
+`SupabaseIngestStore.upsertGames` mandaba la fila entera al upsert, así que cada corrida del cron
+de Vercel devolvía a `pending` las partidas del mes en curso que el motor ya había analizado.
+`PgIngestStore` nunca lo tuvo. **Medido: 0 partidas afectadas hoy** — el cron de Actions usa el
+otro transporte y el de Vercel no había corrido sobre un mes recién analizado. Con 1.678 partidas
+de rápida analizadas, la próxima corrida sí habría pegado.
+
+## Supuestos tomados
+
+1. **El repertorio son tres entradas, no diez.** Ponziani, 1…e5 contra 1.e4 y d5 contra 1.d4. El
+   esquema completo d5/Cf6/e6 se alcanza por transposición, así que declararlo entero daría falsos
+   negativos; se declara su primera jugada.
+2. **El filtro de la cola por tema de la semana es blando.** Cinco de los ocho temas (finales,
+   estructuras, plan, repertorio) no tienen ejercicios posibles, así que un filtro duro dejaría el
+   entrenador vacío cinco semanas de cada ocho.
+3. **`games.rated` es nullable.** Hasta que corra una ingesta completa, NULL significa "no lo
+   sabemos", que no es `false`. Por eso el filtro correcto es `rated is not false`.
+4. **La comparación de repertorio exige n ≥ 20 en los dos lados** antes de decir nada.
+
+## Lo que hay que operar después de mergear
+
+1. **Aplicar `0016`** con el workflow `migraciones` en modo `aplicar` desde `main`.
+2. **Correr `ingest` con `--full`** (workflow `ingest`) para poblar `games.rated` en el histórico.
+   Es idempotente y demora ~2 minutos. Hasta que corra, la columna queda NULL y ninguna vista la
+   filtra, que es el comportamiento correcto para "no lo sabemos".

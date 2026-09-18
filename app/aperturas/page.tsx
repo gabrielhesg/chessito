@@ -78,14 +78,34 @@ export default async function AperturasPage({
   const nFuera = fuera.reduce((a, r) => a + (r.n ?? 0), 0);
   const nTotalRep = nDentro + nFuera;
 
-  // La conclusion la escribe la app comparando los dos grupos, NO un texto fijo. La diferencia
-  // medida hoy es de tres milesimas, asi que un parrafo que dijera "tu repertorio funciona y lo
-  // de afuera no" seria un hallazgo inventado sobre una diferencia que no existe.
-  const scoreDentro =
-    nDentro > 0 ? entradas.reduce((a, r) => a + (r.score_pct ?? 0) * (r.n ?? 0), 0) / nDentro : null;
-  const scoreFuera =
-    nFuera > 0 ? fuera.reduce((a, r) => a + (r.score_pct ?? 0) * (r.n ?? 0), 0) / nFuera : null;
-  const diferencia = scoreDentro !== null && scoreFuera !== null ? scoreDentro - scoreFuera : null;
+  // La conclusion la escribe la app comparando los dos grupos, NO un texto fijo: la diferencia
+  // real es de milesimas, y un parrafo que dijera "tu repertorio funciona y lo de afuera no"
+  // seria un hallazgo inventado sobre algo que no existe.
+  //
+  // **La comparacion es DENTRO DE CADA COLOR, y eso no es un detalle.** Sumando los dos colores,
+  // "dentro del repertorio" son casi todas sus partidas con negras (957 de 1.043) y "fuera" son
+  // casi todas con blancas (795 de 1.038). Como con negras se rinde peor por razones que no
+  // tienen nada que ver con el repertorio, el agregado mostraba una diferencia de 2,9 puntos que
+  // era puro efecto del color. Comparar dentro de cada color lo elimina.
+  const promedio = (filas: typeof repertorio): number | null => {
+    const n = filas.reduce((a, r) => a + (r.n ?? 0), 0);
+    return n > 0 ? filas.reduce((a, r) => a + (r.score_pct ?? 0) * (r.n ?? 0), 0) / n : null;
+  };
+
+  const porColorRepertorio = (['white', 'black'] as const).map((color) => {
+    const dentro = entradas.filter((r) => r.my_color === color);
+    const afuera = fuera.filter((r) => r.my_color === color);
+    const a = promedio(dentro);
+    const b = promedio(afuera);
+    return {
+      color,
+      nDentro: dentro.reduce((x, r) => x + (r.n ?? 0), 0),
+      nFuera: afuera.reduce((x, r) => x + (r.n ?? 0), 0),
+      dentro: a,
+      afuera: b,
+      diferencia: a !== null && b !== null ? a - b : null,
+    };
+  }).filter((c) => c.nDentro >= 20 && c.nFuera >= 20);
 
   const signo = dir === 'asc' ? 1 : -1;
   const comparar = (a: OpeningPerformance, b: OpeningPerformance): number => {
@@ -163,30 +183,38 @@ export default async function AperturasPage({
               ))}
             </Tabla>
 
-            {diferencia !== null ? (
-              <p className="mt-3.5 text-sm leading-relaxed">
-                {Math.abs(diferencia) < 0.03 ? (
-                  <>
-                    Dentro de tu repertorio rindes {(scoreDentro! * 100).toFixed(1)}% y fuera{' '}
-                    {(scoreFuera! * 100).toFixed(1)}%: <strong>prácticamente lo mismo</strong>. Eso
-                    quiere decir que llegar a tu línea preparada no te está dando ventaja, y que el
-                    problema no es qué te juegan sino qué haces después. Mira las entradas por
-                    separado abajo: ahí sí hay diferencias.
-                  </>
-                ) : diferencia > 0 ? (
-                  <>
-                    Dentro de tu repertorio rindes {((diferencia ?? 0) * 100).toFixed(1)} puntos
-                    mejor que fuera. Preparar las respuestas que te sacan de él es trabajo con
-                    retorno medible.
-                  </>
-                ) : (
-                  <>
-                    Rindes {(Math.abs(diferencia ?? 0) * 100).toFixed(1)} puntos <strong>peor</strong>{' '}
-                    dentro de tu repertorio que fuera. Vale la pena revisar si la línea que
-                    preparaste te acomoda de verdad.
-                  </>
-                )}
-              </p>
+            {porColorRepertorio.length > 0 ? (
+              <div className="mt-3.5 space-y-2 text-sm leading-relaxed">
+                {porColorRepertorio.map((c) => (
+                  <p key={c.color}>
+                    <strong>Con {c.color === 'white' ? 'blancas' : 'negras'}:</strong>{' '}
+                    {(c.dentro! * 100).toFixed(1)}% dentro de tu repertorio ({c.nDentro}) contra{' '}
+                    {(c.afuera! * 100).toFixed(1)}% fuera ({c.nFuera}).{' '}
+                    {Math.abs(c.diferencia ?? 0) < 0.03 ? (
+                      <span className="text-tenue">
+                        Prácticamente lo mismo: llegar a tu línea preparada no te está dando
+                        ventaja, así que el problema no es qué te juegan sino qué haces después.
+                      </span>
+                    ) : (c.diferencia ?? 0) > 0 ? (
+                      <span className="text-tenue">
+                        {((c.diferencia ?? 0) * 100).toFixed(1)} puntos mejor dentro: preparar las
+                        respuestas que te sacan de él es trabajo con retorno medible.
+                      </span>
+                    ) : (
+                      <span className="text-tenue">
+                        {(Math.abs(c.diferencia ?? 0) * 100).toFixed(1)} puntos <strong>peor</strong>{' '}
+                        dentro que fuera: vale la pena revisar si la línea que preparaste te acomoda.
+                      </span>
+                    )}
+                  </p>
+                ))}
+                <p className="text-[12.5px] text-apagado">
+                  La comparación va dentro de cada color a propósito. Sumando los dos, &ldquo;dentro
+                  del repertorio&rdquo; serían casi todas tus partidas con negras y &ldquo;fuera&rdquo;
+                  casi todas las de blancas, y la diferencia que aparecería sería del color, no del
+                  repertorio.
+                </p>
+              </div>
             ) : null}
           </Panel>
         ) : null}
