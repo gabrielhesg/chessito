@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { INICIO_DEL_CICLO, TEMAS, cierreDeSemana, semanaDelCiclo } from '@/lib/ciclo/semana';
+import {
+  INICIO_DEL_CICLO,
+  TEMAS,
+  cierreDeSemana,
+  loQueFaltaParaConcluir,
+  semanaDelCiclo,
+} from '@/lib/ciclo/semana';
 
 const en = (iso: string): Date => new Date(`${iso}T15:00:00Z`);
 
@@ -89,5 +95,27 @@ describe('cierreDeSemana', () => {
 
   it('sin partidas esta semana no hay cierre que mostrar', () => {
     expect(cierreDeSemana(filas.slice(1), ['pieza_colgada'], hoy)).toBeNull();
+  });
+});
+
+describe('loQueFaltaParaConcluir', () => {
+  const base = { estaSemana: 0.4, anteriores: 1.0, partidasEstaSemana: 11, partidasAnteriores: 9, concluye: false };
+
+  it('dice cuántas faltan de cada lado', () => {
+    expect(loQueFaltaParaConcluir(base)).toEqual({ faltanEstaSemana: 9, faltanAnteriores: 11 });
+  });
+
+  it('no promete nada cuando la comparación ya concluye', () => {
+    expect(loQueFaltaParaConcluir({ ...base, concluye: true })).toBeNull();
+  });
+
+  it('un lado ya cumplido cuenta como cero, no como negativo', () => {
+    const r = loQueFaltaParaConcluir({ ...base, partidasEstaSemana: 25 });
+    expect(r?.faltanEstaSemana).toBe(0);
+    expect(r?.faltanAnteriores).toBe(11);
+  });
+
+  it('sin cierre no hay nada que prometer', () => {
+    expect(loQueFaltaParaConcluir(null)).toBeNull();
   });
 });
