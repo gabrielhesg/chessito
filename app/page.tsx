@@ -27,6 +27,7 @@ import { Button, Pagina, Progreso } from '@/components/ui';
 import { MonthCalendar } from '@/components/charts/MonthCalendar';
 import { Sparkline } from '@/components/charts/Sparkline';
 import { BalaVsRating, type MesBalaRating } from '@/components/charts/BalaVsRating';
+import { semanaDelCiclo } from '@/lib/ciclo/semana';
 
 export const dynamic = 'force-dynamic';
 
@@ -222,6 +223,10 @@ export default async function Portada() {
   }));
   const mesesConRating = balaVsRating.filter((m) => m.rating !== null).length;
 
+  // El tema de la semana: una linea, nada mas. Sin racha ni porcentaje de cumplimiento — un ciclo
+  // que puntua es un ciclo que se puede perder, y esa es justo la regla del proyecto.
+  const semana = semanaDelCiclo(ahora);
+
   const calendario = (porDia ?? [])
     .filter((d) => d.day_local !== null)
     .map((d) => ({
@@ -315,6 +320,12 @@ export default async function Portada() {
             <div className="flex flex-wrap items-baseline justify-between gap-3">
               <div>
                 <p className="eyebrow text-acento">Tu plan de hoy</p>
+                {semana ? (
+                  <p className="mt-1 text-[12.5px] text-tenue">
+                    Semana {semana.numero} del ciclo · {semana.tema.titulo}
+                    {semana.tema.themes.length > 0 ? ' · tus ejercicios de hoy la priorizan' : ''}
+                  </p>
+                ) : null}
                 <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em]">
                   {hechas === tareas.length ? 'Listo por hoy' : 'Tres cosas y quedas al día'}
                 </h2>

@@ -1149,3 +1149,41 @@ metrica premia perder rapido. Vale para cualquier metrica futura que sume sobre 
 son dos hechos sobre el mismo tiempo, no dos magnitudes que compitan; el pie dice correlacion y
 no causa, y nombra la explicacion contraria. Si alguna vez las dos series son comparables, un
 grafico con dos ejes es una forma de elegir la conclusion.
+
+## Estado al terminar la Fase 4 de la revision integral
+
+La ultima fase del plan de revision. Una migracion nueva (`0016`), ninguna pagina nueva.
+
+| Pieza | Donde |
+|---|---|
+| Repertorio declarado, por jugadas | `supabase/migrations/0016_repertorio.sql`, tabla `repertoire` |
+| Ciclo de 8 semanas, puro | `lib/ciclo/semana.ts` |
+| `games.rated` | `lib/chess/game.ts`, los dos transportes |
+| El invariante del upsert | `lib/ingest/columnas.ts` |
+
+**El repertorio se declara por JUGADAS, no por nombre de apertura.** Medido: el Ponziani son 296
+partidas agrupando por `openings.name` y **507** por orden de jugadas (e4, Nf3, c3). La resolucion
+por EPD reparte una misma linea entre muchos nombres segun lo que haga el rival, asi que el nombre
+nunca va a contestar "llegue a mi repertorio". Si agregas una entrada, va a `repertoire` como
+plies + SAN, no como una lista de ids.
+
+**Comparar dos grupos que difieren en color es comparar colores.** El panel del repertorio
+comparaba "dentro" contra "fuera" sumando los dos colores, y como casi todo lo de dentro es con
+negras y casi todo lo de fuera con blancas, mostraba 2,9 puntos de diferencia que eran del color.
+La regla: **antes de comparar dos grupos, mira si difieren en algo que ya sabes que mueve el
+numero.** Salio de mirar una captura y recalcular a mano, no de un test.
+
+**El upsert de la ingesta NO puede pisar el estado del analisis.** `runIngest` reingiere el archivo
+mensual completo, no solo lo nuevo. `PgIngestStore` lo respetaba excluyendo `analysis_state` y
+`skip_reason` de su lista de update; `SupabaseIngestStore` mandaba la fila entera y las pisaba, asi
+que cada corrida del cron de Vercel habria devuelto a `pending` las partidas ya analizadas del mes
+en curso. Ahora son dos upserts y la lista de columnas de estado vive en `lib/ingest/columnas.ts`.
+**Si agregas una columna que describe el estado del analisis y no la partida, va en esa lista.**
+
+**Un ciclo de estudio no lleva pantalla de ajustes.** Ocho temas en codigo y una fecha de inicio
+constante: cambiarla es editar una linea, que es una operacion de una vez cada dos meses. Y el
+filtro de la cola por tema es BLANDO: cinco de los ocho temas no tienen ejercicios posibles
+(finales, estructuras), asi que un filtro duro dejaria el entrenador vacio cinco semanas de ocho.
+
+**Sin racha, sin porcentaje de cumplimiento.** La regla de la Fase 4 del proyecto sigue en pie: un
+ciclo que puntua es un ciclo que se puede perder.

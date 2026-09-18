@@ -1,5 +1,11 @@
 import Link from 'next/link';
-import { openingPerformance, coberturaAnalisis, type OpeningPerformance } from '@/lib/data';
+import {
+  coberturaAnalisis,
+  openingPerformance,
+  repertorioRendimiento,
+  respuestasDelRival,
+  type OpeningPerformance,
+} from '@/lib/data';
 import {
   Ayuda,
   Badge,
@@ -61,6 +67,46 @@ export default async function AperturasPage({
   const analizadas = deLaClase?.n_analyzed ?? 0;
   const totalPartidas = deLaClase?.n_analizables ?? 0;
 
+  // El repertorio DECLARADO. Va con `.catch` porque lo crea la migracion 0016: sin ella la
+  // pagina sigue sirviendo lo de siempre en vez de caerse.
+  const repertorio = await repertorioRendimiento().catch(() => []);
+  const respuestas = await respuestasDelRival(20).catch(() => []);
+
+  const entradas = repertorio.filter((r) => r.repertorio_id !== 'fuera' && (r.n ?? 0) > 0);
+  const fuera = repertorio.filter((r) => r.repertorio_id === 'fuera');
+  const nDentro = entradas.reduce((a, r) => a + (r.n ?? 0), 0);
+  const nFuera = fuera.reduce((a, r) => a + (r.n ?? 0), 0);
+  const nTotalRep = nDentro + nFuera;
+
+  // La conclusion la escribe la app comparando los dos grupos, NO un texto fijo: la diferencia
+  // real es de milesimas, y un parrafo que dijera "tu repertorio funciona y lo de afuera no"
+  // seria un hallazgo inventado sobre algo que no existe.
+  //
+  // **La comparacion es DENTRO DE CADA COLOR, y eso no es un detalle.** Sumando los dos colores,
+  // "dentro del repertorio" son casi todas sus partidas con negras (957 de 1.043) y "fuera" son
+  // casi todas con blancas (795 de 1.038). Como con negras se rinde peor por razones que no
+  // tienen nada que ver con el repertorio, el agregado mostraba una diferencia de 2,9 puntos que
+  // era puro efecto del color. Comparar dentro de cada color lo elimina.
+  const promedio = (filas: typeof repertorio): number | null => {
+    const n = filas.reduce((a, r) => a + (r.n ?? 0), 0);
+    return n > 0 ? filas.reduce((a, r) => a + (r.score_pct ?? 0) * (r.n ?? 0), 0) / n : null;
+  };
+
+  const porColorRepertorio = (['white', 'black'] as const).map((color) => {
+    const dentro = entradas.filter((r) => r.my_color === color);
+    const afuera = fuera.filter((r) => r.my_color === color);
+    const a = promedio(dentro);
+    const b = promedio(afuera);
+    return {
+      color,
+      nDentro: dentro.reduce((x, r) => x + (r.n ?? 0), 0),
+      nFuera: afuera.reduce((x, r) => x + (r.n ?? 0), 0),
+      dentro: a,
+      afuera: b,
+      diferencia: a !== null && b !== null ? a - b : null,
+    };
+  }).filter((c) => c.nDentro >= 20 && c.nFuera >= 20);
+
   const signo = dir === 'asc' ? 1 : -1;
   const comparar = (a: OpeningPerformance, b: OpeningPerformance): number => {
     if (sort === 'n') return signo * ((a.n ?? 0) - (b.n ?? 0));
@@ -110,6 +156,96 @@ export default async function AperturasPage({
       }
     >
       <div className="space-y-6">
+        {nTotalRep > 0 ? (
+          <Panel
+            title={`Llegaste a tu repertorio en ${nDentro.toLocaleString('es-CL')} de ${nTotalRep.toLocaleString('es-CL')} partidas`}
+            subtitle="Tu repertorio declarado, agrupado por las jugadas que lo definen y no por el nombre de la apertura"
+          >
+            <Tabla
+              aligns={['text', 'text', 'num', 'num']}
+              headers={['Línea', 'Color', 'Partidas', <span key="r">Rendimiento{AYUDA_RENDIMIENTO}</span>]}
+            >
+              {[...entradas, ...fuera].map((r) => (
+                <Fila key={`${r.repertorio_id}-${r.my_color}`} atenuada={(r.n ?? 0) < 20}>
+                  <Td>
+                    {r.repertorio_id === 'fuera' ? (
+                      <span className="text-tenue">No llegaste a tu repertorio</span>
+                    ) : (
+                      (r.nombre ?? r.repertorio_id)
+                    )}
+                  </Td>
+                  <Td>{r.my_color === 'white' ? 'blancas' : 'negras'}</Td>
+                  <Td num>{(r.n ?? 0).toLocaleString('es-CL')}</Td>
+                  <Td num>
+                    <Rendimiento pctValue={r.score_pct} wilson={r.score_pct_lower} n={r.n ?? 0} />
+                  </Td>
+                </Fila>
+              ))}
+            </Tabla>
+
+            {porColorRepertorio.length > 0 ? (
+              <div className="mt-3.5 space-y-2 text-sm leading-relaxed">
+                {porColorRepertorio.map((c) => (
+                  <p key={c.color}>
+                    <strong>Con {c.color === 'white' ? 'blancas' : 'negras'}:</strong>{' '}
+                    {(c.dentro! * 100).toFixed(1)}% dentro de tu repertorio ({c.nDentro}) contra{' '}
+                    {(c.afuera! * 100).toFixed(1)}% fuera ({c.nFuera}).{' '}
+                    {Math.abs(c.diferencia ?? 0) < 0.03 ? (
+                      <span className="text-tenue">
+                        Prácticamente lo mismo: llegar a tu línea preparada no te está dando
+                        ventaja, así que el problema no es qué te juegan sino qué haces después.
+                      </span>
+                    ) : (c.diferencia ?? 0) > 0 ? (
+                      <span className="text-tenue">
+                        {((c.diferencia ?? 0) * 100).toFixed(1)} puntos mejor dentro: preparar las
+                        respuestas que te sacan de él es trabajo con retorno medible.
+                      </span>
+                    ) : (
+                      <span className="text-tenue">
+                        {(Math.abs(c.diferencia ?? 0) * 100).toFixed(1)} puntos <strong>peor</strong>{' '}
+                        dentro que fuera: vale la pena revisar si la línea que preparaste te acomoda.
+                      </span>
+                    )}
+                  </p>
+                ))}
+                <p className="text-[12.5px] text-apagado">
+                  La comparación va dentro de cada color a propósito. Sumando los dos, &ldquo;dentro
+                  del repertorio&rdquo; serían casi todas tus partidas con negras y &ldquo;fuera&rdquo;
+                  casi todas las de blancas, y la diferencia que aparecería sería del color, no del
+                  repertorio.
+                </p>
+              </div>
+            ) : null}
+          </Panel>
+        ) : null}
+
+        {respuestas.length > 0 ? (
+          <Panel
+            title="Qué te juegan cuando te sacan del repertorio"
+            subtitle="Solo las respuestas con 20 partidas o más, que son las que permiten una conclusión"
+          >
+            <Tabla
+              aligns={['text', 'text', 'num', 'num']}
+              headers={['Te jugaron', 'Con', 'Partidas', <span key="r2">Rendimiento{AYUDA_RENDIMIENTO}</span>]}
+            >
+              {respuestas.map((r) => (
+                <Fila key={`${r.apertura}-${r.my_color}`}>
+                  <Td className="max-w-[16rem] truncate">{r.apertura}</Td>
+                  <Td>{r.my_color === 'white' ? 'blancas' : 'negras'}</Td>
+                  <Td num>{(r.n ?? 0).toLocaleString('es-CL')}</Td>
+                  <Td num>
+                    <Rendimiento pctValue={r.score_pct} wilson={r.score_pct_lower} n={r.n ?? 0} />
+                  </Td>
+                </Fila>
+              ))}
+            </Tabla>
+            <p className="mt-3 text-[12.5px] text-tenue">
+              Cada fila de arriba es una semana de estudio perfectamente definida: son las
+              posiciones que ya te aparecieron decenas de veces y para las que no tienes plan.
+            </p>
+          </Panel>
+        ) : null}
+
         {(['white', 'black'] as const).map((color) => {
           const barras = peores(color);
           const tabla = porColor(color);

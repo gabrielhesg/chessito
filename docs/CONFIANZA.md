@@ -112,13 +112,30 @@ Esta es la respuesta directa a "cómo sé que se están cargando bien las partid
 
 Cada corrida de ingesta hace lo siguiente, y no solo insertar:
 
-1. Le pregunta a chess.com **cuántas partidas** tiene en cada mes que está sincronizando
-2. Cuenta **cuántas tiene la base de datos** para ese mismo mes, con la vista `v_games_by_month`
-3. **Compara los dos números** y guarda la diferencia en `job_runs.detail`
-4. Si no calzan, la corrida se marca como fallida y la página de salud lo muestra en rojo
+1. Le pide a chess.com **los identificadores** (`uuid`) de todas las partidas de cada mes que está
+   sincronizando
+2. Pregunta a la base **cuáles de esos uuid quedaron guardados**
+3. Guarda en `job_runs.detail`, por mes, cuántas venían, cuántas se guardaron y **los uuid de las
+   que faltan**
+4. Si falta alguna, la corrida se marca como fallida y la página de salud lo muestra en rojo
 
 Una ingesta que dice "listo" pero perdió 12 partidas es exactamente el tipo de falla silenciosa
 que arruina un análisis, y esto la hace imposible de ignorar.
+
+### Por qué UUID a UUID y no comparando conteos mensuales
+
+El plan original de este documento comparaba el conteo de chess.com contra `v_games_by_month`.
+**No puede funcionar, y está medido:** los archivos mensuales de chess.com están cortados por el
+**inicio** de la partida, mientras que `games.end_time` guarda el final. Cualquier vista agrupada
+por mes descuadra en cada frontera de mes — en el histórico completo aparecieron doce meses con
+diferencias que se cancelan de a pares (−8/+8, −15/+15).
+
+Comparar uuid a uuid no solo evita ese falso positivo: además sabe **cuál** partida falta, no solo
+que falta una. El razonamiento completo está escrito en `supabase/migrations/0003_session_features.sql`.
+
+Este documento describió durante varias fases un mecanismo que la migración 0003 ya había
+reemplazado. Para un proyecto cuyo argumento central es *no creas los números, verifícalos*, un
+documento de confianza desactualizado es deuda de confianza, no deuda técnica.
 
 ---
 

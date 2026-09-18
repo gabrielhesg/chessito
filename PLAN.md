@@ -23,7 +23,7 @@ Su plan por fases, sus criterios de aceptación y sus prompts viven en
 | **Fase 1 · Que la app hable de rápida y diga lo que ya sabe** | Que cada número se calcule sobre la población que dice, y que cada panel que pregunta responda | **Hecha** (`docs/review/BITACORA.md`) |
 | **Fase 2 · El ciclo de la derrota** | Modo ciego en `/partida`, cola de derrotas sin revisar, sesión dirigida, `/reloj` por clase | **Hecha** (`docs/review/BITACORA.md`) |
 | **Fase 3 · Las dos debilidades, medidas** | North Star (piezas colgadas por partida), conversión de ventaja, serie de mejora | **Hecha** (`docs/review/BITACORA.md`) |
-| **Fase 4 · Repertorio y ciclo** | Repertorio declarado, tema de la semana, `rated`, limpieza | Pendiente (`docs/review/prompts/revision-fase4.md`) |
+| **Fase 4 · Repertorio y ciclo** | Repertorio declarado, tema de la semana, `rated`, limpieza | **Hecha** (`docs/review/BITACORA.md`) |
 
 **Lo que hay que operar después de mergear la Fase 1 de la revisión**, en orden: aplicar la
 migración `0011` con el workflow `migraciones`; correr `pnpm moves:rephase` (una vez, idempotente);
