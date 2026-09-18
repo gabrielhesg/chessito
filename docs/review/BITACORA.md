@@ -335,3 +335,52 @@ de rápida analizadas, la próxima corrida sí habría pegado.
 2. **Correr `ingest` con `--full`** (workflow `ingest`) para poblar `games.rated` en el histórico.
    Es idempotente y demora ~2 minutos. Hasta que corra, la columna queda NULL y ninguna vista la
    filtra, que es el comportamiento correcto para "no lo sabemos".
+
+
+---
+
+# Después de la Fase 4 · lo que apareció al operar
+
+Dos cosas que solo se pueden saber corriendo esto contra la base real.
+
+## `rated` resultó irrelevante, y eso es el resultado
+
+La reingesta completa pobló `games.rated` en las 10.134 partidas. **Amistosas: 10.** Un 0,1 % del
+histórico.
+
+El prompt de la fase pedía además filtrar por `rated` en las vistas de rendimiento. **No se hizo,
+a propósito:** filtrar diez partidas de diez mil no mueve ningún Wilson ni ninguna tasa, y sí
+agrega una condición a cada vista de rendimiento que alguien tendría que mantener. El propio
+prompt decía que el beneficio no estaba demostrado porque no se había podido medir; ahora está
+medido, y no lo hay. La columna queda poblada y documentada: si algún día juega cien amistosas, el
+dato está y el filtro es una línea.
+
+Lo que sí se agregó es el chequeo `partidas_sin_rated` (0017), que ahora significa algo: con la
+columna poblada, una fila sin `rated` solo puede venir de una ingesta que dejó de mapearlo.
+
+## El arreglo del upsert, verificado en producción
+
+La reingesta pasó por encima de las 10.134 partidas, de las cuales 4.656 estaban analizadas.
+Después: **4.656 analizadas y 0 partidas en `pending` con evaluaciones ya escritas.** Ninguna
+perdió su análisis.
+
+Con una salvedad honesta: esta corrida usa `PgIngestStore` (Actions), que ya respetaba el
+invariante. Lo que se arregló en la Fase 4 fue `SupabaseIngestStore`, que es el de Vercel, y ese
+se ejercita con el cron diario. La predicción verificable queda escrita: tras la próxima corrida
+del cron de Vercel, `analisis_perdido` tiene que seguir en 0.
+
+## Un chequeo en rojo que resultó ser un umbral mal puesto
+
+`evaluaciones_fuera_de_rango` se puso en rojo con **una fila de 4,6 millones**: `eval_cp = -19969`
+con `mate_in` NULL, jugada del rival, `is_decided = true`, sin efecto en ninguna métrica.
+
+No era un error de parseo: `lib/engine/protocol.ts:76` copia el número de `score cp N` tal cual y
+`mate_in` es NULL, así que tampoco vino de `mateToCp` (±10000). Stockfish 19 emitió ese centipeón.
+El umbral de 15000 (de 0002) buscaba atrapar basura de parseo, que se vería distinta —leer el
+`depth` o los `nodes` daría millones—. El techo correcto es el `VALUE_MATE` del motor, 32000.
+Queda en 30000.
+
+**La regla que deja:** un chequeo permanentemente rojo por un caso legítimo es peor que no
+tenerlo, porque entrena a ignorar `/salud`. Pero la vara solo se mueve cuando se puede demostrar
+dónde estaba mal — acá están la fila, el código que la escribió y la constante del motor que fija
+el techo real.
