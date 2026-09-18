@@ -181,7 +181,7 @@ export class PgIngestStore implements IngestStore {
     );
   }
 
-  async loadGamesForMoves(): Promise<GameForMoves[]> {
+  async loadGamesForMoves(limite?: number): Promise<GameForMoves[]> {
     const client = await this.connect();
     const res = await client.query<{
       id: number;
@@ -197,7 +197,9 @@ export class PgIngestStore implements IngestStore {
          left join openings o on o.id = g.opening_id
         where g.analysis_state not in ('skipped', 'failed')
           and not exists (select 1 from moves m where m.game_id = g.id)
-        order by g.id`,
+        order by g.id
+        ${limite !== undefined ? 'limit $1' : ''}`,
+      limite !== undefined ? [limite] : [],
     );
     return res.rows.map((row) => ({
       id: row.id,

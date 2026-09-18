@@ -33,6 +33,7 @@ export type MotivoDeDerrota = Views['v_motivos_de_derrota']['Row'];
 export type GameReview = Database['public']['Tables']['game_reviews']['Row'];
 export type RepertorioRendimiento = Views['v_repertorio_rendimiento']['Row'];
 export type RepertorioDivergencia = Views['v_repertorio_divergencia']['Row'];
+export type ErroresPorSemana = Views['v_errores_por_semana']['Row'];
 export type RespuestaDelRival = Views['v_respuestas_del_rival']['Row'];
 export type NorthStar = Views['v_north_star']['Row'];
 export type NorthStarMensual = Views['v_north_star_mensual']['Row'];
@@ -621,6 +622,17 @@ export async function repertorioRendimiento(): Promise<RepertorioRendimiento[]> 
     .select('*')
     .order('n', { ascending: false });
   if (error) fail('v_repertorio_rendimiento', error.message);
+  return data ?? [];
+}
+
+/** Blunders por patron y por semana, normalizados por partida. Alimenta el cierre de semana. */
+export async function erroresPorSemana(): Promise<ErroresPorSemana[]> {
+  const { data, error } = await supabaseAdmin()
+    .from('v_errores_por_semana')
+    .select('*')
+    .order('semana_inicio', { ascending: false })
+    .limit(60);
+  if (error) fail('v_errores_por_semana', error.message);
   return data ?? [];
 }
 

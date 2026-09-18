@@ -660,6 +660,17 @@ export type Database = {
         }
         Relationships: []
       }
+      v_errores_por_semana: {
+        Row: {
+          semana_inicio: string | null
+          semana: string | null
+          n_partidas: number | null
+          theme: string | null
+          n_blunders: number | null
+          por_partida: number | null
+        }
+        Relationships: []
+      }
       v_errors_by_move_time: {
         Row: {
           time_class: string | null

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { INICIO_DEL_CICLO, TEMAS, semanaDelCiclo } from '@/lib/ciclo/semana';
+import { INICIO_DEL_CICLO, TEMAS, cierreDeSemana, semanaDelCiclo } from '@/lib/ciclo/semana';
 
 const en = (iso: string): Date => new Date(`${iso}T15:00:00Z`);
 
@@ -44,5 +44,50 @@ describe('semanaDelCiclo', () => {
     for (const tema of TEMAS) {
       for (const t of tema.themes) expect(validos.has(t)).toBe(true);
     }
+  });
+});
+
+describe('cierreDeSemana', () => {
+  const lunes = (iso: string): string => iso;
+  // Semana en curso: 2026-09-14 (lunes). `hoy` cae dentro de ella.
+  const hoy = new Date('2026-09-17T15:00:00Z');
+
+  const filas = [
+    { semana_inicio: lunes('2026-09-14'), n_partidas: 25, theme: 'pieza_colgada', n_blunders: 10 },
+    { semana_inicio: lunes('2026-09-07'), n_partidas: 20, theme: 'pieza_colgada', n_blunders: 20 },
+    { semana_inicio: lunes('2026-08-31'), n_partidas: 10, theme: 'pieza_colgada', n_blunders: 10 },
+  ];
+
+  it('normaliza por partida: una semana con más partidas no empeora por jugar más', () => {
+    const r = cierreDeSemana(filas, ['pieza_colgada'], hoy);
+    // 10/25 = 0,4 esta semana contra (20+10)/(20+10) = 1,0 en las anteriores.
+    expect(r?.estaSemana).toBeCloseTo(0.4, 5);
+    expect(r?.anteriores).toBeCloseTo(1.0, 5);
+  });
+
+  it('exige muestra en LOS DOS lados antes de concluir', () => {
+    expect(cierreDeSemana(filas, ['pieza_colgada'], hoy)?.concluye).toBe(true);
+    const flaca = [{ semana_inicio: lunes('2026-09-14'), n_partidas: 4, theme: 'pieza_colgada', n_blunders: 1 }, ...filas.slice(1)];
+    expect(cierreDeSemana(flaca, ['pieza_colgada'], hoy)?.concluye).toBe(false);
+  });
+
+  it('una semana sin partidas no cuenta como semana de cero errores', () => {
+    const conHueco = [
+      filas[0]!,
+      { semana_inicio: lunes('2026-09-07'), n_partidas: 0, theme: null, n_blunders: 0 },
+      filas[2]!,
+    ];
+    const r = cierreDeSemana(conHueco, ['pieza_colgada'], hoy);
+    // Solo entra la del 31-08: 10/10 = 1,0. Si la vacía contara, el promedio bajaría a 0,5.
+    expect(r?.anteriores).toBeCloseTo(1.0, 5);
+    expect(r?.partidasAnteriores).toBe(10);
+  });
+
+  it('un tema sin ejercicios posibles no inventa una comparación', () => {
+    expect(cierreDeSemana(filas, [], hoy)).toBeNull();
+  });
+
+  it('sin partidas esta semana no hay cierre que mostrar', () => {
+    expect(cierreDeSemana(filas.slice(1), ['pieza_colgada'], hoy)).toBeNull();
   });
 });

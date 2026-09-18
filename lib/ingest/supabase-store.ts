@@ -156,10 +156,11 @@ export class SupabaseIngestStore implements IngestStore {
     if (error) throw new Error(`No se pudo cerrar job_runs ${id}: ${error.message}`);
   }
 
-  async loadGamesForMoves(): Promise<GameForMoves[]> {
+  async loadGamesForMoves(limite?: number): Promise<GameForMoves[]> {
     const rows: GameForMoves[] = [];
-    const pageSize = 500;
+    const pageSize = limite !== undefined ? Math.min(limite, 500) : 500;
     for (let from = 0; ; from += pageSize) {
+      if (limite !== undefined && rows.length >= limite) break;
       const { data, error } = await this.client
         .from('v_games_pending_moves')
         .select('id, pgn, my_color, base_seconds, increment_secs, opening_ply_count')
