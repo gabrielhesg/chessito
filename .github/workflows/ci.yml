@@ -60,7 +60,7 @@ jobs:
       - name: Ingesta y chequeos de calidad contra Postgres
         env:
           TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
-        run: pnpm exec vitest run tests/ingest.integration.test.ts tests/extract-moves.integration.test.ts tests/analyze.integration.test.ts tests/sql-functions.integration.test.ts tests/revision.integration.test.ts tests/reloj-por-clase.integration.test.ts tests/revision-de-partida.integration.test.ts tests/sesion-dirigida.integration.test.ts tests/debilidades.integration.test.ts
+        run: pnpm exec vitest run tests/ingest.integration.test.ts tests/extract-moves.integration.test.ts tests/analyze.integration.test.ts tests/sql-functions.integration.test.ts tests/revision.integration.test.ts tests/reloj-por-clase.integration.test.ts tests/revision-de-partida.integration.test.ts tests/sesion-dirigida.integration.test.ts tests/debilidades.integration.test.ts tests/divergencia.integration.test.ts
 
   # Los mismos diez chequeos, pero contra la base de VERDAD. El job de integracion ya los
   # verifica siempre sobre un Postgres efimero; este agrega el estado real de los datos de

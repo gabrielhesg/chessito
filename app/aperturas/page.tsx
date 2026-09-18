@@ -2,6 +2,7 @@ import Link from 'next/link';
 import {
   coberturaAnalisis,
   openingPerformance,
+  repertorioDivergencia,
   repertorioRendimiento,
   respuestasDelRival,
   type OpeningPerformance,
@@ -71,6 +72,7 @@ export default async function AperturasPage({
   // pagina sigue sirviendo lo de siempre en vez de caerse.
   const repertorio = await repertorioRendimiento().catch(() => []);
   const respuestas = await respuestasDelRival(20).catch(() => []);
+  const divergencia = await repertorioDivergencia().catch(() => []);
 
   const entradas = repertorio.filter((r) => r.repertorio_id !== 'fuera' && (r.n ?? 0) > 0);
   const fuera = repertorio.filter((r) => r.repertorio_id === 'fuera');
@@ -216,6 +218,57 @@ export default async function AperturasPage({
                 </p>
               </div>
             ) : null}
+          </Panel>
+        ) : null}
+
+        {divergencia.some((d) => (d.n_diverged ?? 0) >= 10) ? (
+          <Panel
+            title="En qué jugada se te tuerce cada línea"
+            subtitle="La primera jugada en que tu evaluación cae bajo un peón, en las partidas donde llegó a pasar"
+          >
+            <Tabla
+              aligns={['text', 'text', 'num', 'num']}
+              headers={[
+                'Línea',
+                'Color',
+                <span key="nd" className="inline-flex items-center">
+                  Partidas que se torcieron
+                  <Ayuda alinear="der">
+                    El denominador son solo las partidas donde tu evaluación llegó a caer bajo
+                    −100 centipeones. En las otras nunca perdiste el hilo, y meterlas como ceros o
+                    dejarlas fuera movería la mediana en direcciones opuestas.
+                  </Ayuda>
+                </span>,
+                'Jugada (mediana)',
+              ]}
+            >
+              {divergencia
+                .filter((d) => (d.n_diverged ?? 0) >= 10)
+                .map((d) => (
+                  <Fila key={`${d.repertorio_id}-${d.my_color}`}>
+                    <Td>
+                      {d.repertorio_id === 'fuera' ? (
+                        <span className="text-tenue">Fuera del repertorio</span>
+                      ) : (
+                        (d.nombre ?? d.repertorio_id)
+                      )}
+                    </Td>
+                    <Td>{d.my_color === 'white' ? 'blancas' : 'negras'}</Td>
+                    <Td num>
+                      {(d.n_diverged ?? 0).toLocaleString('es-CL')}
+                      <span className="text-apagado"> de {(d.n ?? 0).toLocaleString('es-CL')}</span>
+                    </Td>
+                    <Td num>
+                      {d.mediana_ply === null ? '—' : Math.round(Number(d.mediana_ply) / 2)}
+                    </Td>
+                  </Fila>
+                ))}
+            </Tabla>
+            <p className="mt-3 text-[12.5px] text-tenue">
+              Más tarde es mejor: significa que la línea te sostiene más jugadas antes de que la
+              posición se te escape. Es el mejor mapa que tienes de dónde empezar a estudiar cada
+              línea, porque te dice la jugada y no solo el nombre de la apertura.
+            </p>
           </Panel>
         ) : null}
 

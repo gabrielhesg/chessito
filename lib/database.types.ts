@@ -920,6 +920,18 @@ export type Database = {
         }
         Relationships: []
       }
+      v_repertorio_divergencia: {
+        Row: {
+          repertorio_id: string | null
+          nombre: string | null
+          my_color: Database["public"]["Enums"]["game_color"] | null
+          n: number | null
+          n_diverged: number | null
+          mediana_ply: number | null
+          promedio_ply: number | null
+        }
+        Relationships: []
+      }
       v_repertorio_partida: {
         Row: {
           game_id: number | null
