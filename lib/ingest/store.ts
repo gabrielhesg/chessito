@@ -71,8 +71,12 @@ export interface IngestStore {
    * Partidas listas para `moves:extract`: no estan `skipped` ni `failed`, y no tienen filas
    * en `moves` todavia. Es lo que hace idempotente la extraccion: correrla dos veces no
    * duplica nada porque la segunda vez no encuentra partidas pendientes.
+   *
+   * `limite` existe por el boton "Actualizar ahora" de la portada, que corre en Vercel con 300 s
+   * de tope: sin tope, un atraso de miles de partidas convierte un boton en un timeout. Los
+   * scripts batch lo llaman sin limite, que es el comportamiento de siempre.
    */
-  loadGamesForMoves(): Promise<GameForMoves[]>;
+  loadGamesForMoves(limite?: number): Promise<GameForMoves[]>;
   /** Inserta las filas de una partida. Falla si ya existian (`primary key (game_id, ply)`). */
   insertMoves(gameId: number, rows: MoveRow[]): Promise<void>;
   /** Una partida cuyo PGN no se pudo reproducir. No detiene la corrida. */

@@ -3,6 +3,9 @@ import Link from 'next/link';
 import { ChesscomClient } from '@/lib/chess/chesscom';
 import { appEnv, env } from '@/lib/env';
 import { runIngest } from '@/lib/ingest/run';
+import { runExtractMoves } from '@/lib/ingest/extract-moves';
+import { dispatchWorkflow } from '@/lib/github';
+import { log } from '@/lib/log';
 import { SupabaseIngestStore } from '@/lib/ingest/supabase-store';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import {
@@ -279,16 +282,46 @@ export default async function Portada() {
   const temasVencidos = porTema.filter((t) => t.n > 0 && t.theme !== null).slice(0, 4);
   const temaPrincipal = temasVencidos[0];
 
+  /**
+   * El ciclo completo de un tap: traer la partida recien jugada, dejarla lista para el motor, y
+   * pedirle al motor que la analice.
+   *
+   * **Los tres pasos, y en este orden, por una razon concreta.** Hasta ahora el boton solo
+   * ingeria. Una partida ingerida sin filas en `moves` es exactamente el caso que en la Fase 2
+   * hizo que el analizador la marcara `done` sin haber analizado una sola jugada — no habia nada
+   * que analizar. `ingest.yml` encadena `moves:extract` por eso mismo; este boton no lo hacia.
+   *
+   * Los dos primeros pasos corren aca (son parseo de PGN, milisegundos por partida). El tercero
+   * no puede: Stockfish necesita un binario nativo y minutos, no los 300 s de una funcion de
+   * Vercel, asi que se dispara `analyze.yml` en Actions.
+   */
   async function actualizarAhora(): Promise<void> {
     'use server';
+    const store = new SupabaseIngestStore(supabaseAdmin());
+
     await runIngest({
-      store: new SupabaseIngestStore(supabaseAdmin()),
+      store,
       client: new ChesscomClient({ username: env.CHESSCOM_USERNAME }),
       username: env.CHESSCOM_USERNAME,
       environment: appEnv(),
       trigger: 'manual',
       scope: { kind: 'recent' },
     });
+
+    // El limite es la diferencia entre un boton y un timeout: si algun dia hay un atraso de
+    // miles de partidas, esto igual termina en segundos y la cola la vacia el workflow.
+    await runExtractMoves({ store, environment: appEnv(), trigger: 'manual', limite: 20 });
+
+    // Que no haya `GITHUB_TOKEN` no puede romper el boton: la ingesta ya ocurrio y es lo que el
+    // jugador vino a buscar. El analisis se dispara igual cada dia por el cron.
+    try {
+      await dispatchWorkflow('analyze.yml', { batch: '50' });
+    } catch (error) {
+      log.error('no se pudo disparar el analisis desde la portada', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
     revalidatePath('/');
   }
 

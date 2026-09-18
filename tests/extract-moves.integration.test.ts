@@ -89,6 +89,29 @@ suite('moves:extract contra Postgres real', () => {
     expect(summary.processed).toBe(allFixtures().length - skippedFixtures);
   }, 60_000);
 
+  it('`limite` acota cuantas partidas procesa, que es lo que separa un boton de un timeout', async () => {
+    // El boton "Actualizar ahora" de la portada corre en Vercel, con 300 s de tope. Sin limite,
+    // un atraso de miles de partidas lo convierte en un timeout; con limite, la partida recien
+    // jugada queda lista en segundos y la cola la vacia el workflow.
+    //
+    // El `it` anterior ya dejo todo extraido, asi que hay que vaciar `moves` para volver a tener
+    // partidas pendientes de verdad.
+    const db = new Client({ connectionString: url });
+    await db.connect();
+    try {
+      await db.query('truncate moves');
+    } finally {
+      await db.end();
+    }
+    const parcial = await runExtractMoves({ store, environment: 'test', trigger: 'manual', limite: 2 });
+    expect(parcial.processed).toBe(2);
+    expect(parcial.failed).toBe(0);
+
+    // Y lo que quedo pendiente sigue pendiente: el limite no marca nada como hecho.
+    const resto = await runExtractMoves({ store, environment: 'test', trigger: 'manual' });
+    expect(resto.processed).toBeGreaterThan(0);
+  }, 60_000);
+
   it('correrla dos veces no encuentra nada pendiente (idempotencia)', async () => {
     const segunda = await runExtractMoves({ store, environment: 'test', trigger: 'manual' });
     expect(segunda.processed).toBe(0);

@@ -16,6 +16,12 @@ export type ExtractMovesOptions = {
   store: IngestStore;
   environment: string;
   trigger: string;
+  /**
+   * Cuantas partidas procesar como maximo. Sin limite (el caso de `pnpm moves:extract`) procesa
+   * todas las pendientes. Con limite es para el boton de la portada, que corre en Vercel: ahi lo
+   * que importa es que la partida recien jugada quede lista en segundos, no vaciar la cola.
+   */
+  limite?: number;
 };
 
 export type ExtractMovesFailure = { gameId: number; reason: string };
@@ -38,7 +44,7 @@ export async function runExtractMoves(options: ExtractMovesOptions): Promise<Ext
   const failures: ExtractMovesFailure[] = [];
 
   try {
-    const games = await store.loadGamesForMoves();
+    const games = await store.loadGamesForMoves(options.limite);
     log.info('Partidas pendientes de extraer jugadas', { total: games.length });
 
     for (const game of games) {
