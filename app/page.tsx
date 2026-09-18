@@ -19,6 +19,7 @@ import {
   ratingMaximo,
   coberturaAnalisis,
   derrotasSinRevisar,
+  erroresPorSemana,
   northStar,
   northStarMensual,
 } from '@/lib/data';
@@ -27,7 +28,7 @@ import { Button, Pagina, Progreso } from '@/components/ui';
 import { MonthCalendar } from '@/components/charts/MonthCalendar';
 import { Sparkline } from '@/components/charts/Sparkline';
 import { BalaVsRating, type MesBalaRating } from '@/components/charts/BalaVsRating';
-import { semanaDelCiclo } from '@/lib/ciclo/semana';
+import { cierreDeSemana, semanaDelCiclo } from '@/lib/ciclo/semana';
 
 export const dynamic = 'force-dynamic';
 
@@ -227,6 +228,13 @@ export default async function Portada() {
   // que puntua es un ciclo que se puede perder, y esa es justo la regla del proyecto.
   const semana = semanaDelCiclo(ahora);
 
+  // El cierre de semana: los errores del tema en curso contra las cuatro semanas anteriores.
+  // Solo tiene sentido si el tema de la semana mapea a algun patron: cinco de los ocho no.
+  const cierre =
+    semana && semana.tema.themes.length > 0
+      ? cierreDeSemana(await erroresPorSemana().catch(() => []), semana.tema.themes, ahora)
+      : null;
+
   const calendario = (porDia ?? [])
     .filter((d) => d.day_local !== null)
     .map((d) => ({
@@ -324,6 +332,27 @@ export default async function Portada() {
                   <p className="mt-1 text-[12.5px] text-tenue">
                     Semana {semana.numero} del ciclo · {semana.tema.titulo}
                     {semana.tema.themes.length > 0 ? ' · tus ejercicios de hoy la priorizan' : ''}
+                  </p>
+                ) : null}
+                {cierre !== null && cierre.anteriores !== null ? (
+                  <p className="mt-1 text-[12.5px]">
+                    <span className="tabular-nums">{cierre.estaSemana.toFixed(2)}</span> de esos
+                    errores por partida esta semana, contra{' '}
+                    <span className="tabular-nums">{cierre.anteriores.toFixed(2)}</span> en las
+                    cuatro anteriores.{' '}
+                    {cierre.concluye ? (
+                      <span
+                        className={cierre.estaSemana <= cierre.anteriores ? 'text-bien' : 'text-critico'}
+                      >
+                        {cierre.estaSemana <= cierre.anteriores ? 'Vas mejor.' : 'Vas peor.'}
+                      </span>
+                    ) : (
+                      <span className="text-apagado">
+                        Con {cierre.partidasEstaSemana} partidas esta semana y{' '}
+                        {cierre.partidasAnteriores} antes todavía no es una conclusión: el umbral
+                        son 20 de cada lado.
+                      </span>
+                    )}
                   </p>
                 ) : null}
                 <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em]">

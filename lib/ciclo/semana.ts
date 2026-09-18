@@ -76,3 +76,82 @@ export function semanaDelCiclo(ahora: Date, inicio: string = INICIO_DEL_CICLO): 
     diaDeLaSemana: dias % 7,
   };
 }
+
+/** Una fila de `v_errores_por_semana`, con lo mínimo que la comparación necesita. */
+export type FilaSemana = {
+  semana_inicio: string | null;
+  n_partidas: number | null;
+  theme: string | null;
+  n_blunders: number | null;
+};
+
+export type CierreDeSemana = {
+  /** Blunders del tema por partida, en la semana en curso. */
+  estaSemana: number;
+  /** El mismo número, promediado sobre las cuatro semanas anteriores con partidas. */
+  anteriores: number | null;
+  partidasEstaSemana: number;
+  partidasAnteriores: number;
+  /**
+   * Si la comparación puede concluir algo. El umbral de 20 del proyecto aplica a los DOS lados:
+   * una semana de 4 partidas contra otra de 11 no dice nada, por mucho que los números difieran.
+   */
+  concluye: boolean;
+};
+
+/**
+ * El cierre de semana: los errores del tema en curso contra el promedio de las cuatro anteriores.
+ *
+ * Lo que hace honesto el numero es que se normaliza por partida y que se exige muestra en los dos
+ * lados. Sin lo primero, una semana de 11 partidas "empeora" contra una de 4 solo por jugar mas;
+ * sin lo segundo, se anuncia una mejora sobre tres partidas.
+ *
+ * Las semanas sin partidas no entran al promedio de "las cuatro anteriores": son semanas que no
+ * ocurrieron, no semanas de cero errores.
+ */
+export function cierreDeSemana(
+  filas: readonly FilaSemana[],
+  temas: readonly string[],
+  hoy: Date,
+): CierreDeSemana | null {
+  if (temas.length === 0) return null;
+
+  const inicioDeSemana = (d: Date): string => {
+    const dia = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+    // ISO: lunes es 1. `getUTCDay` da 0 para domingo.
+    const dow = new Date(dia).getUTCDay();
+    const desdeLunes = (dow + 6) % 7;
+    return new Date(dia - desdeLunes * 86_400_000).toISOString().slice(0, 10);
+  };
+
+  const semanaActual = inicioDeSemana(hoy);
+  const porSemana = new Map<string, { partidas: number; blunders: number }>();
+  for (const f of filas) {
+    if (f.semana_inicio === null) continue;
+    const clave = f.semana_inicio.slice(0, 10);
+    const actual = porSemana.get(clave) ?? { partidas: f.n_partidas ?? 0, blunders: 0 };
+    actual.partidas = f.n_partidas ?? actual.partidas;
+    if (f.theme !== null && temas.includes(f.theme)) actual.blunders += f.n_blunders ?? 0;
+    porSemana.set(clave, actual);
+  }
+
+  const deEstaSemana = porSemana.get(semanaActual);
+  if (!deEstaSemana || deEstaSemana.partidas === 0) return null;
+
+  const anteriores = [...porSemana.entries()]
+    .filter(([k, v]) => k < semanaActual && v.partidas > 0)
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .slice(0, 4)
+    .map(([, v]) => v);
+
+  const partidasAnteriores = anteriores.reduce((a, v) => a + v.partidas, 0);
+  const blundersAnteriores = anteriores.reduce((a, v) => a + v.blunders, 0);
+
+  return {
+    estaSemana: deEstaSemana.blunders / deEstaSemana.partidas,
+    anteriores: partidasAnteriores > 0 ? blundersAnteriores / partidasAnteriores : null,
+    partidasEstaSemana: deEstaSemana.partidas,
+    partidasAnteriores,
+    concluye: deEstaSemana.partidas >= 20 && partidasAnteriores >= 20,
+  };
+}
