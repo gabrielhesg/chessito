@@ -32,6 +32,7 @@ export type DerrotaSinRevisar = Views['v_derrotas_sin_revisar']['Row'];
 export type MotivoDeDerrota = Views['v_motivos_de_derrota']['Row'];
 export type GameReview = Database['public']['Tables']['game_reviews']['Row'];
 export type RepertorioRendimiento = Views['v_repertorio_rendimiento']['Row'];
+export type RepertorioDivergencia = Views['v_repertorio_divergencia']['Row'];
 export type RespuestaDelRival = Views['v_respuestas_del_rival']['Row'];
 export type NorthStar = Views['v_north_star']['Row'];
 export type NorthStarMensual = Views['v_north_star_mensual']['Row'];
@@ -623,6 +624,22 @@ export async function repertorioRendimiento(): Promise<RepertorioRendimiento[]> 
   return data ?? [];
 }
 
+/**
+ * En que jugada se tuerce cada linea del repertorio: la pregunta 1 del proyecto, que hasta el
+ * backfill de rapida no se podia contestar.
+ *
+ * `mediana_ply` va sobre `n_diverged`, no sobre `n`: en las partidas que nunca cayeron bajo
+ * -100 cp no hay un "donde se torcio" que promediar.
+ */
+export async function repertorioDivergencia(): Promise<RepertorioDivergencia[]> {
+  const { data, error } = await supabaseAdmin()
+    .from('v_repertorio_divergencia')
+    .select('*')
+    .order('n', { ascending: false });
+  if (error) fail('v_repertorio_divergencia', error.message);
+  return data ?? [];
+}
+
 /** Que le juegan cuando NO llega a su repertorio. Es la mitad del diagnostico que no pide motor. */
 export async function respuestasDelRival(minimo = 20): Promise<RespuestaDelRival[]> {
   const { data, error } = await supabaseAdmin()
@@ -706,9 +723,14 @@ export async function motivosDeDerrota(): Promise<MotivoDeDerrota[]> {
 /**
  * Desglose por control de tiempo de las partidas de rapida de un mes local (`YYYY-MM`).
  *
- * Su plan declara 15+10 como formato base y el historico tiene 19 partidas en `900+10` contra
- * 2.569 en `600`. Sin este corte, la app no puede notar una desviacion del plan que sus propios
- * datos contienen.
+ * **No es un detector de desviaciones, y esa correccion la dio Gabriel.** La version original de
+ * este comentario trataba el 10+0 como una desviacion de un plan que declaraba 15+10 (19 partidas
+ * contra 2.569). Preguntado directamente, respondio que juega los dos formatos a proposito. Asi
+ * que el desglose se muestra como lo que es —informacion— y ninguna pantalla lo presenta como una
+ * brecha: medir una desviacion que el jugador no considera desviacion es fabricar un problema.
+ *
+ * Sigue siendo util: dos formatos distintos tienen relojes distintos, y /reloj y los blunders por
+ * tiempo se leen distinto en uno y en otro.
  */
 export async function formatosDeRapida(month: string): Promise<Array<{ timeControl: string; n: number }>> {
   const { data, error } = await supabaseAdmin()
