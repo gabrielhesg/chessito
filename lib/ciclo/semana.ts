@@ -155,3 +155,33 @@ export function cierreDeSemana(
     concluye: deEstaSemana.partidas >= 20 && partidasAnteriores >= 20,
   };
 }
+
+export type LoQueFalta = {
+  /** Partidas que faltan esta semana para llegar al umbral. 0 si ya está. */
+  faltanEstaSemana: number;
+  /** Partidas que le faltan al grupo de comparación (las cuatro semanas anteriores). 0 si ya está. */
+  faltanAnteriores: number;
+};
+
+/**
+ * Qué falta, en partidas, para que el cierre de semana deje de ser ruido.
+ *
+ * Existe para que la portada pueda decir algo **verdadero y alcanzable** sobre lo que gana una
+ * partida más, en vez de un contador que solo sube. No inventa nada: si la comparación ya
+ * concluye, devuelve null y la portada no dice nada.
+ *
+ * El umbral es alcanzable y está medido: la mediana de sus semanas con rápida son 23 partidas, y
+ * 39 de 69 semanas pasaron de 20. No lo es a su volumen de los últimos seis meses (2 de 13), que
+ * es justamente lo que el numero deberia empujar a cambiar.
+ *
+ * Los dos lados van por separado a proposito: llegar a 20 esta semana es **necesario pero no
+ * suficiente** si el grupo de comparacion todavia no junta 20, y prometer que una partida
+ * destraba algo que no destraba es peor que no decir nada.
+ */
+export function loQueFaltaParaConcluir(cierre: CierreDeSemana | null, umbral = 20): LoQueFalta | null {
+  if (cierre === null || cierre.concluye) return null;
+  return {
+    faltanEstaSemana: Math.max(0, umbral - cierre.partidasEstaSemana),
+    faltanAnteriores: Math.max(0, umbral - cierre.partidasAnteriores),
+  };
+}
