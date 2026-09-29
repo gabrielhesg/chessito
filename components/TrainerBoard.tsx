@@ -21,6 +21,7 @@ import {
   type Linea,
   type PasoLinea,
 } from "@/lib/puzzles/explain";
+import { lineaAReproducir } from "@/lib/puzzles/solucion";
 import {
   MiniBoardPopover,
   useMiniBoardPopover,
@@ -415,9 +416,10 @@ export function TrainerBoard({
 }) {
   const router = useRouter();
 
+  // Lo que hay que ACERTAR va acotado; la linea completa se sigue usando para explicar. El
+  // porque, con los numeros que lo motivaron, esta en `lib/puzzles/solucion.ts`.
   const solucion = useMemo(
-    () =>
-      puzzle.solutionLine?.length ? puzzle.solutionLine : [puzzle.bestUci],
+    () => lineaAReproducir(puzzle.solutionLine, puzzle.bestUci),
     [puzzle.solutionLine, puzzle.bestUci],
   );
   const orientacion =
