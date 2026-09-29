@@ -41,6 +41,11 @@ export type AnalyzeOptions = {
   /** Presupuesto fijo de nodos por posicion (docs/ANALYSIS-SPEC.md). */
   nodes: number;
   batchSize: number;
+  /**
+   * Una partida que va primera, por encima de la prioridad por clase: la que el alumno eligio
+   * desde el entrenador. Solo el primer lote la considera; despues sigue la cola normal.
+   */
+  primero?: number;
   environment: string;
   trigger: string;
 };
@@ -173,7 +178,7 @@ export async function runAnalyze(options: AnalyzeOptions): Promise<AnalyzeSummar
     let remainingInBatch = options.batchSize;
     for (;;) {
       const lotSize = Math.min(10, Math.max(1, remainingInBatch));
-      const games = await store.claimBatch(lotSize);
+      const games = await store.claimBatch(lotSize, options.primero);
       if (games.length === 0) break;
 
       for (const game of games) {

@@ -34,6 +34,8 @@ export type BuildPuzzlesOptions = {
   batchSize: number;
   environment: string;
   trigger: string;
+  /** Una partida cuyos blunders van primero: la que el alumno eligio desde el entrenador. */
+  primero?: number;
   /**
    * 'construir' busca blunders sin ejercicio; 'enriquecer' rellena las lineas de los ejercicios
    * que ya existen desde antes de la migracion 0007. El resto del camino es identico.
@@ -86,7 +88,7 @@ export async function runBuildPuzzles(options: BuildPuzzlesOptions): Promise<Bui
       const candidates =
         modo === 'enriquecer'
           ? await store.claimIncompletePuzzles(lotSize)
-          : await store.claimBlunderCandidates(lotSize);
+          : await store.claimBlunderCandidates(lotSize, options.primero);
       if (candidates.length === 0) break;
 
       for (const candidate of candidates) {

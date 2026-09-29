@@ -59,7 +59,7 @@ export class PuzzleStore {
    * que todavia no tienen ejercicio. El `not exists` es la primera red de idempotencia; el
    * `on conflict` de `insertPuzzle` es la segunda.
    */
-  async claimBlunderCandidates(limit: number): Promise<BlunderCandidate[]> {
+  async claimBlunderCandidates(limit: number, primero?: number): Promise<BlunderCandidate[]> {
     const client = await this.connect();
     const res = await client.query<{
       game_id: number;
@@ -77,9 +77,12 @@ export class PuzzleStore {
           and not m.is_book
           and not m.is_decided
           and not exists (select 1 from puzzles p where p.game_id = m.game_id and p.ply = m.ply)
-        order by g.end_time desc
+        -- La partida elegida desde el entrenador va primera. Sin esto, elegir una partida vieja
+        -- no sirve de nada: el lote de 200 se llena con blunders mas recientes y los suyos
+        -- esperan dias.
+        order by (g.id = $2) desc, g.end_time desc
         limit $1`,
-      [limit],
+      [limit, primero ?? -1],
     );
     return res.rows.map((row) => ({
       gameId: row.game_id,

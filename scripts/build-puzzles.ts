@@ -39,6 +39,10 @@ async function main(): Promise<void> {
   const nodes = Number.parseInt(process.env['ENGINE_NODES'] ?? '800000', 10);
   const threads = Number.parseInt(process.env['ENGINE_THREADS'] ?? '1', 10);
   const batchSize = Number.parseInt(arg('--batch', '200'), 10);
+  // La partida que el alumno eligio desde el entrenador: va primera. Vacio o invalido = cola
+  // normal, que es lo que hace el cron diario.
+  const partidaArg = Number.parseInt(arg('--partida', ''), 10);
+  const primero = Number.isFinite(partidaArg) && partidaArg > 0 ? partidaArg : undefined;
   const modo = process.argv.includes('--enrich') ? 'enriquecer' : 'construir';
   const trigger = process.env['GITHUB_ACTIONS'] === 'true' ? 'workflow_dispatch' : 'manual';
 
@@ -54,6 +58,7 @@ async function main(): Promise<void> {
       engine,
       nodes,
       batchSize,
+      primero,
       environment: appEnv(),
       trigger,
       modo,

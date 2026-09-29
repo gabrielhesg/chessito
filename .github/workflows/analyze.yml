@@ -17,6 +17,11 @@ on:
         required: false
         default: '500'
         type: string
+      partida:
+        description: 'Id de una partida que va primero (la que elegiste en el entrenador). Vacio = cola normal'
+        required: false
+        default: ''
+        type: string
 
 jobs:
   analizar:
@@ -74,7 +79,16 @@ jobs:
           APP_ENV: prod
           ENGINE_NODES: '800000'
           ENGINE_THREADS: ${{ steps.hilos.outputs.threads }}
-        run: pnpm analyze --batch ${{ inputs.batch || '500' }}
+          PARTIDA: ${{ inputs.partida }}
+        # `PARTIDA` va por variable de entorno y se valida como numero, en vez de interpolarse en
+        # la linea: `workflow_dispatch` acepta cualquier texto, y un input interpolado en un
+        # `run:` es una inyeccion de shell esperando a pasar.
+        run: |
+          if [[ "$PARTIDA" =~ ^[0-9]+$ ]]; then
+            pnpm analyze --batch ${{ inputs.batch || '500' }} --partida "$PARTIDA"
+          else
+            pnpm analyze --batch ${{ inputs.batch || '500' }}
+          fi
       - name: Construir ejercicios
         if: steps.secretos.outputs.listos == 'true'
         # Encadenado igual que moves:extract al final de ingest.yml: sin este paso, el
@@ -92,7 +106,13 @@ jobs:
           APP_ENV: prod
           ENGINE_NODES: '800000'
           ENGINE_THREADS: ${{ steps.hilos.outputs.threads }}
-        run: pnpm puzzles:build --batch 200
+          PARTIDA: ${{ inputs.partida }}
+        run: |
+          if [[ "$PARTIDA" =~ ^[0-9]+$ ]]; then
+            pnpm puzzles:build --batch 200 --partida "$PARTIDA"
+          else
+            pnpm puzzles:build --batch 200
+          fi
       - name: Respaldo NDJSON a Supabase Storage
         if: steps.secretos.outputs.listos == 'true'
         env:
