@@ -300,6 +300,58 @@ export async function nextPuzzleDeLaPartida(gameId: number): Promise<Puzzle | nu
   return data;
 }
 
+/** Una partida reciente, con lo que el selector del entrenador necesita para ofrecerla. */
+export type PartidaParaEntrenar = Pick<
+  Game,
+  | 'id'
+  | 'end_time'
+  | 'time_class'
+  | 'time_control'
+  | 'result'
+  | 'termination'
+  | 'opp_username'
+  | 'my_color'
+  | 'analysis_state'
+  | 'skip_reason'
+> & {
+  /** Ejercicios que ya salieron de esta partida. */
+  ejercicios: number;
+};
+
+/**
+ * Las ultimas partidas, de TODAS las clases, con cuantos ejercicios tiene cada una.
+ *
+ * Todas las clases y no solo rapida, a diferencia del analisis de errores: la pregunta aca es
+ * "quiero entrenar la que acabo de jugar", y la que acaba de jugar suele ser de bala. Los
+ * ejercicios ya se construyen desde todas las clases desde la Fase 12, por la misma razon: una
+ * posicion perdida entrena igual en cualquier ritmo.
+ *
+ * El conteo sale de `v_ejercicios_por_partida` (0014), no se calcula aca: es un cruce de dos
+ * listas chicas, no una agregacion.
+ */
+export async function partidasParaEntrenar(limite = 15): Promise<PartidaParaEntrenar[]> {
+  const { data, error } = await supabaseAdmin()
+    .from('games')
+    .select(
+      'id, end_time, time_class, time_control, result, termination, opp_username, my_color, analysis_state, skip_reason',
+    )
+    .eq('rules', 'chess')
+    .order('end_time', { ascending: false })
+    .limit(limite);
+  if (error) fail('games', error.message);
+  const partidas = data ?? [];
+  if (partidas.length === 0) return [];
+
+  const { data: conteos, error: errorConteos } = await supabaseAdmin()
+    .from('v_ejercicios_por_partida')
+    .select('game_id, n')
+    .in('game_id', partidas.map((p) => p.id));
+  if (errorConteos) fail('v_ejercicios_por_partida', errorConteos.message);
+  const porPartida = new Map((conteos ?? []).map((c) => [c.game_id, c.n ?? 0]));
+
+  return partidas.map((p) => ({ ...p, ejercicios: porPartida.get(p.id) ?? 0 }));
+}
+
 /** Cuantos ejercicios tiene una partida. Es el N del boton de /partida. */
 export async function ejerciciosDeLaPartida(gameId: number): Promise<number> {
   const { data, error } = await supabaseAdmin()

@@ -10,6 +10,7 @@
  * Uso:
  *   pnpm analyze              lote de 200 partidas (default)
  *   pnpm analyze --batch 50   lote mas chico, util para medir tiempo real antes de un backfill
+ *   pnpm analyze --partida 123  esa partida primero, antes que la cola por clase
  */
 import { config } from 'dotenv';
 import { assertEnv, appEnv } from '@/lib/env';
@@ -36,6 +37,10 @@ async function main(): Promise<void> {
   const nodes = Number.parseInt(process.env['ENGINE_NODES'] ?? '800000', 10);
   const threads = Number.parseInt(process.env['ENGINE_THREADS'] ?? '1', 10);
   const batchSize = Number.parseInt(arg('--batch', '200'), 10);
+  // La partida que el alumno eligio desde el entrenador: va primera. Vacio o invalido = cola
+  // normal, que es lo que hace el cron diario.
+  const partidaArg = Number.parseInt(arg('--partida', ''), 10);
+  const primero = Number.isFinite(partidaArg) && partidaArg > 0 ? partidaArg : undefined;
   const trigger = process.env['GITHUB_ACTIONS'] === 'true' ? 'workflow_dispatch' : 'manual';
 
   const engine = new UciEngine(stockfishPath);
@@ -52,6 +57,7 @@ async function main(): Promise<void> {
       engineId,
       nodes,
       batchSize,
+      primero,
       environment: appEnv(),
       trigger,
     });

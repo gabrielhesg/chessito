@@ -66,23 +66,36 @@ export class AnalysisStore {
    * panel de conceptos filtran rapida por decision explicita de la Fase 12, asi que ese
    * analisis no le sirve a ninguna pantalla. Ver docs/review/00-inventario.md seccion 3.4.
    */
-  async claimBatch(limit: number): Promise<ClaimedGame[]> {
+  async claimBatch(limit: number, primero?: number): Promise<ClaimedGame[]> {
     const client = await this.connect();
     const res = await client.query<{ id: number; my_color: GameColor }>(
+      // Dos condiciones nuevas, y las dos cierran un hueco concreto:
+      //
+      // - `exists (moves)`: una partida sin jugadas extraidas no se reclama NUNCA. Sin esto,
+      //   `analyzeOneGame` la guarda como `done` con cero jugadas analizadas — el bug que en la
+      //   Fase 2 dejo miles de partidas "analizadas" sin analizar. Hasta ahora lo evitaba solo el
+      //   orden de los workflows (ingest encadena moves:extract); desde que el entrenador puede
+      //   pedir cualquier partida, tiene que evitarlo el analizador mismo.
+      //
+      // - `(id = $2) desc`: la partida que el alumno eligio va primera, por encima de la
+      //   prioridad por clase. Sin esto, una partida de bala recien jugada queda detras de miles
+      //   de blitz pendientes y "analizar esta partida" analizaria otras cincuenta.
       `update games set analysis_state = 'claimed', claimed_at = now()
         where id in (
-          select id from games
-           where rules = 'chess'
+          select g.id from games g
+           where g.rules = 'chess'
              and (
-               analysis_state = 'pending'
-               or (analysis_state = 'claimed' and claimed_at < now() - interval '30 minutes')
+               g.analysis_state = 'pending'
+               or (g.analysis_state = 'claimed' and g.claimed_at < now() - interval '30 minutes')
              )
-           order by (time_class = 'rapid') desc, (time_class = 'blitz') desc, end_time desc
+             and exists (select 1 from moves m where m.game_id = g.id)
+           order by (g.id = $2) desc, (g.time_class = 'rapid') desc, (g.time_class = 'blitz') desc,
+                    g.end_time desc
            limit $1
            for update skip locked
         )
         returning id, my_color`,
-      [limit],
+      [limit, primero ?? -1],
     );
     return res.rows.map((row) => ({ id: row.id, myColor: row.my_color }));
   }

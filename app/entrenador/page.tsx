@@ -173,8 +173,18 @@ export default async function EntrenadorPage({
         ) : null
       }
     >
-      {(chips.length > 0 || enTanda) && puzzle ? (
-        <div className="mb-5 flex flex-wrap items-center gap-2">
+      <div className="mb-5 flex flex-wrap items-center gap-2">
+        {/* Siempre visible, haya o no ejercicios en cola: "quiero entrenar la que acabo de
+            jugar" es justo el caso en que la cola normal todavia no la tiene. */}
+        <Link
+          href="/entrenador/partidas"
+          className="rounded-lg border border-acento/50 px-2.5 py-1 text-xs font-medium text-acento hover:bg-acento/10"
+        >
+          Elegir una partida →
+        </Link>
+        {(chips.length > 0 || enTanda) && puzzle ? (
+          <>
+          <span aria-hidden className="mx-1 h-4 w-px bg-borde" />
           {enTanda ? (
             <>
               <span className="text-xs text-tenue">Errores de una sola partida</span>
@@ -215,8 +225,9 @@ export default async function EntrenadorPage({
               ))}
             </>
           )}
-        </div>
-      ) : null}
+          </>
+        ) : null}
+      </div>
 
       {puzzle ? (
         <TrainerBoard
